@@ -15,7 +15,11 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(opciones =>
+{
+    // Esto le dice a la API: "Si ves que un dato se repite en bucle, cortalo ahí y no explotes"
+    opciones.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
 builder.Services.AddDbContext<BibliotecaContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 

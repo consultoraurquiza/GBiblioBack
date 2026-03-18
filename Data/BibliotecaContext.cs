@@ -12,6 +12,8 @@ namespace Backend.Data
 
         // Estas propiedades DbSet son las que se van a convertir en las tablas de PostgreSQL
         public DbSet<Libro> Libros { get; set; }
+        public DbSet<Ejemplar> Ejemplares { get; set; }
+        public DbSet<Tag> Tags { get; set; }
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<Prestamo> Prestamos { get; set; }
         public DbSet<Material> Materiales { get; set; }

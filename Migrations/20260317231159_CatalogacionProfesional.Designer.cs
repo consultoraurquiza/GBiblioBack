@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Backend.Migrations
 {
     [DbContext(typeof(BibliotecaContext))]
-    [Migration("20260317125317_AgregarMateriales")]
-    partial class AgregarMateriales
+    [Migration("20260317231159_CatalogacionProfesional")]
+    partial class CatalogacionProfesional
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,6 +25,34 @@ namespace Backend.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Backend.Models.Ejemplar", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("DisponibleParaPrestamo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LibroId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NumeroInventario")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibroId");
+
+                    b.ToTable("Ejemplares");
+                });
+
             modelBuilder.Entity("Backend.Models.Libro", b =>
                 {
                     b.Property<int>("Id")
@@ -33,36 +61,29 @@ namespace Backend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("AnioPublicacion")
-                        .HasColumnType("integer");
+                    b.Property<string>("AnioPublicacion")
+                        .HasColumnType("text");
 
-                    b.Property<string>("Autor")
+                    b.Property<string>("AutorPrincipal")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("CantidadDisponible")
-                        .HasColumnType("integer");
+                    b.Property<string>("Clasificacion")
+                        .HasColumnType("text");
 
-                    b.Property<int>("CantidadTotal")
-                        .HasColumnType("integer");
+                    b.Property<string>("CodigoCutter")
+                        .HasColumnType("text");
 
                     b.Property<string>("Editorial")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Isbn")
-                        .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("Materia")
-                        .IsRequired()
+                    b.Property<string>("Subtitulo")
                         .HasColumnType("text");
 
                     b.Property<string>("Titulo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("UbicacionFisica")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -117,6 +138,9 @@ namespace Backend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("EjemplarId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Estado")
                         .HasColumnType("integer");
 
@@ -129,15 +153,12 @@ namespace Backend.Migrations
                     b.Property<DateTime>("FechaVencimiento")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("LibroId")
-                        .HasColumnType("integer");
-
                     b.Property<int>("UsuarioId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LibroId");
+                    b.HasIndex("EjemplarId");
 
                     b.HasIndex("UsuarioId");
 
@@ -177,6 +198,23 @@ namespace Backend.Migrations
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("PrestamosMateriales");
+                });
+
+            modelBuilder.Entity("Backend.Models.Tag", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Tags");
                 });
 
             modelBuilder.Entity("Backend.Models.Usuario", b =>
@@ -221,11 +259,37 @@ namespace Backend.Migrations
                     b.ToTable("Usuarios");
                 });
 
-            modelBuilder.Entity("Backend.Models.Prestamo", b =>
+            modelBuilder.Entity("LibroTag", b =>
+                {
+                    b.Property<int>("LibrosId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TagsId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("LibrosId", "TagsId");
+
+                    b.HasIndex("TagsId");
+
+                    b.ToTable("LibroTag");
+                });
+
+            modelBuilder.Entity("Backend.Models.Ejemplar", b =>
                 {
                     b.HasOne("Backend.Models.Libro", "Libro")
-                        .WithMany("Prestamos")
+                        .WithMany("Ejemplares")
                         .HasForeignKey("LibroId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Libro");
+                });
+
+            modelBuilder.Entity("Backend.Models.Prestamo", b =>
+                {
+                    b.HasOne("Backend.Models.Ejemplar", "Ejemplar")
+                        .WithMany()
+                        .HasForeignKey("EjemplarId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -235,7 +299,7 @@ namespace Backend.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Libro");
+                    b.Navigation("Ejemplar");
 
                     b.Navigation("Usuario");
                 });
@@ -259,9 +323,24 @@ namespace Backend.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("LibroTag", b =>
+                {
+                    b.HasOne("Backend.Models.Libro", null)
+                        .WithMany()
+                        .HasForeignKey("LibrosId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Backend.Models.Tag", null)
+                        .WithMany()
+                        .HasForeignKey("TagsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Backend.Models.Libro", b =>
                 {
-                    b.Navigation("Prestamos");
+                    b.Navigation("Ejemplares");
                 });
 
             modelBuilder.Entity("Backend.Models.Material", b =>

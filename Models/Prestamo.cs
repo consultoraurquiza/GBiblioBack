@@ -3,20 +3,19 @@ public class Prestamo
 {
     public int Id { get; set; }
     
-    // Claves foráneas
-    public int LibroId { get; set; }
-    public Libro Libro { get; set; }
+    // AHORA APUNTA AL EJEMPLAR FÍSICO
+    public int EjemplarId { get; set; }
+    public Ejemplar Ejemplar { get; set; } = null!;
     
     public int UsuarioId { get; set; }
-    public Usuario Usuario { get; set; }
+    public Usuario Usuario { get; set; } = null!;
     
-    // Fechas importantes
     public DateTime FechaSalida { get; set; }
-    public DateTime FechaVencimiento { get; set; } // Fecha límite para devolver
-    public DateTime? FechaDevolucionReal { get; set; } // Nullable, porque al crear el préstamo aún no se devolvió
-    
-    public EstadoPrestamo Estado { get; set; } // Enum para saber rápido la situación
+    public DateTime FechaVencimiento { get; set; } 
+    public DateTime? FechaDevolucionReal { get; set; } 
+    public EstadoPrestamo Estado { get; set; } 
 }
+
 
 public enum EstadoPrestamo
 {

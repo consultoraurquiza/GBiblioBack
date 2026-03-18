@@ -1,23 +1,24 @@
 namespace Backend.Models;
-using System.Text.Json.Serialization;
+
 public class Libro
 {
     public int Id { get; set; }
-    public string Isbn { get; set; } // Útil si en el futuro usan lector de código de barras
-    public string Titulo { get; set; }
-    public string Autor { get; set; }
-    public string Editorial { get; set; }
-    public int AnioPublicacion { get; set; }
-    
-    // Clasificación escolar
-    public string Materia { get; set; } // Ej: "Historia", "Matemáticas"
-    public string UbicacionFisica { get; set; } // Ej: "Estante 3 - Pasillo A"
 
-    // Control de inventario
-    public int CantidadTotal { get; set; }
-    public int CantidadDisponible { get; set; } 
+    // --- Datos MARC 21 Simplificados ---
+    public string? Isbn { get; set; }
+    public string Titulo { get; set; } = string.Empty;
+    public string? Subtitulo { get; set; }
+    public string AutorPrincipal { get; set; } = string.Empty;
+    public string? Editorial { get; set; }
+    public string? AnioPublicacion { get; set; }
     
-    // Relación
-    [JsonIgnore] // Para evitar ciclos infinitos al serializar a JSON
-    public ICollection<Prestamo> Prestamos { get; set; } = new List<Prestamo>();
+    // --- Signatura Topográfica (Para encontrarlo en el estante) ---
+    public string? Clasificacion { get; set; } // Ej: 863 (Literatura) -> Sistema Dewey o CDU
+    public string? CodigoCutter { get; set; }  // Ej: B732 (Borges)
+    
+    // Relación con los Tags (Muchos a Muchos)
+    public ICollection<Tag> Tags { get; set; } = new List<Tag>();
+
+    // Relación con los Ejemplares Físicos (Uno a Muchos)
+    public ICollection<Ejemplar> Ejemplares { get; set; } = new List<Ejemplar>();
 }
