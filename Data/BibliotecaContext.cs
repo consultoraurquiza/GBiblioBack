@@ -24,10 +24,7 @@ namespace Backend.Data
         {
             base.OnModelCreating(modelBuilder);
             
-            // Ejemplo: Forzar que el ISBN sea único para que no carguen el mismo libro dos veces por error
-            modelBuilder.Entity<Libro>()
-                .HasIndex(l => l.Isbn)
-                .IsUnique();
+           
         }
     }
 }
