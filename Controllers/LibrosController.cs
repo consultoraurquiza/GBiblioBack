@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace Backend.Controllers
 {
@@ -205,6 +207,141 @@ namespace Backend.Controllers
             return Ok(libro);
         }
 
+        // GET: api/libros/inventario
+        [HttpGet("inventario")]
+        public async Task<ActionResult<IEnumerable<object>>> GetInventarioCompleto()
+        {
+            // Buscamos directamente desde los Ejemplares, incluimos su Libro y ordenamos
+            var inventario = await _context.Ejemplares
+                .Include(e => e.Libro)
+                .OrderBy(e => e.NumeroInventario)
+                .Select(e => new {
+                    Id = e.Id,
+                    NumeroInventario = e.NumeroInventario,
+                    Observaciones = e.Observaciones,
+                    Disponible = e.DisponibleParaPrestamo,
+                    LibroId = e.Libro.Id,
+                    Titulo = e.Libro.Titulo,
+                    Autor = e.Libro.AutorPrincipal,
+                    Clasificacion = e.Libro.Clasificacion,
+                    Cutter = e.Libro.CodigoCutter
+                })
+                .ToListAsync();
+
+            if (!inventario.Any()) return NotFound(new { mensaje = "El inventario está vacío." });
+
+            return Ok(inventario);
+        }
+
+
+        // GET: api/libros/cutter/borges
+        [HttpGet("cutter/{autor}")]
+        public IActionResult CalcularCutter(string autor)
+        {
+            if (string.IsNullOrWhiteSpace(autor)) return BadRequest();
+
+            try 
+            {
+                // 1. Leemos el archivo JSON físico
+                var rutaJson = Path.Combine(Directory.GetCurrentDirectory(), "cutter.json");
+                var json = System.IO.File.ReadAllText(rutaJson);
+                var tablaCutter = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(json);
+                
+                // 2. Limpiamos el autor (si escriben "Borges, Jorge", nos quedamos con "borges")
+                var apellido = autor.Split(',')[0].Trim().ToLower();
+                string numeroAsignado = "111"; // Número base por defecto
+                
+                // 3. El algoritmo Cutter real: Buscar el prefijo más cercano alfabéticamente
+                var tablaOrdenada = tablaCutter.OrderBy(x => x.Key.ToLower()).ToList();
+
+                foreach (var item in tablaOrdenada)
+                {
+                    // Si la tabla dice "borge" y el autor es "borges", nos sirve.
+                    if (string.Compare(item.Key.ToLower(), apellido) <= 0)
+                        numeroAsignado = item.Value.ToString();
+                    else
+                        break; // Si ya nos pasamos alfabéticamente, cortamos la búsqueda
+                }
+
+                // 4. El formato final es: Primera Letra (Mayúscula) + El número encontrado
+                var resultado = char.ToUpper(apellido[0]) + numeroAsignado;
+                
+                return Ok(new { cutter = resultado });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { mensaje = "Error leyendo cutter.json", error = ex.Message });
+            }
+        }
+
+        // GET: api/libros/lookup/isbn/978...
+        [HttpGet("lookup/isbn/{isbn}")]
+        public async Task<ActionResult<LibroLookupDTO>> LookupPorIsbn(string isbn)
+        {
+            if (string.IsNullOrWhiteSpace(isbn)) return BadRequest();
+
+            // 1. Preparamos el cliente para salir a internet
+            using var httpClient = new HttpClient();
+            try
+            {
+                // 2. Consultamos la API pública de Google Books
+                var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}";
+                var response = await httpClient.GetAsync(url);
+                
+                if (!response.IsSuccessStatusCode) 
+                    return StatusCode(502, new { mensaje = "Error consultando a Google Books." });
+
+                // 3. Leemos y parseamos el JSON complejo de Google
+                var jsonString = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(jsonString);
+                var root = doc.RootElement;
+
+                // Verificamos si Google encontró algo
+                if (root.GetProperty("totalItems").GetInt32() == 0)
+                    return NotFound(new { mensaje = "Libro no encontrado en la base de datos mundial." });
+
+                // Extraemos la información del primer resultado
+                var volumeInfo = root.GetProperty("items")[0].GetProperty("volumeInfo");
+
+                // 4. Mapeamos al DTO simple
+                var resultado = new LibroLookupDTO
+                {
+                    Titulo = volumeInfo.TryGetProperty("title", out var t) ? t.GetString()! : "",
+                    Subtitulo = volumeInfo.TryGetProperty("subtitle", out var s) ? s.GetString()! : "",
+                    // Google devuelve array de autores, nos quedamos con el primero
+                    AutorPrincipal = volumeInfo.TryGetProperty("authors", out var a) && a.GetArrayLength() > 0 ? a[0].GetString()! : "",
+                    Editorial = volumeInfo.TryGetProperty("publisher", out var p) ? p.GetString()! : "",
+                    // Google devuelve "YYYY-MM-DD", nos quedamos con los primeros 4 chars
+                    AnioPublicacion = volumeInfo.TryGetProperty("publishedDate", out var d) && d.GetString()!.Length >= 4 ? d.GetString()!.Substring(0, 4) : ""
+                };
+
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { mensaje = "Error interno al buscar ISBN.", error = ex.Message });
+            }
+        }
+
+        // GET: api/libros/cutter-table
+        [HttpGet("cutter-table")]
+        public IActionResult GetTablaCutterCompleta()
+        {
+            try 
+            {
+                var rutaJson = Path.Combine(Directory.GetCurrentDirectory(), "cutter.json");
+                if (!System.IO.File.Exists(rutaJson)) return NotFound(new { mensaje = "Archivo cutter.json no encontrado." });
+                
+                var json = System.IO.File.ReadAllText(rutaJson);
+                // Devolvemos el JSON crudo, ASP.NET se encarga de serializarlo como objeto
+                return Content(json, "application/json");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { mensaje = "Error leyendo cutter.json", error = ex.Message });
+            }
+        }
+
         // POST: api/libros/sembrar-datos
         // ¡IMPORTANTE! Usar solo para pruebas.
         [HttpPost("sembrar-datos")]
@@ -392,6 +529,17 @@ namespace Backend.Controllers
         public string NumeroInventario { get; set; } = string.Empty;
         public string? Observaciones { get; set; }
         public bool DisponibleParaPrestamo { get; set; } 
+    }
+
+    // DTO simple para devolver datos encontrados en internet
+    public class LibroLookupDTO
+    {
+        public string Titulo { get; set; } = string.Empty;
+        public string Subtitulo { get; set; } = string.Empty;
+        public string AutorPrincipal { get; set; } = string.Empty;
+        public string Editorial { get; set; } = string.Empty;
+        public string AnioPublicacion { get; set; } = string.Empty;
+        // La CDD/CDU rara vez viene directa de Google, así que no la sumamos acá.
     }
 
     
