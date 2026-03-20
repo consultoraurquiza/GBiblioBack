@@ -1,0 +1,119 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Backend.Data;
+using Backend.Models;
+
+namespace Backend.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class PrestamosController : ControllerBase
+    {
+        private readonly BibliotecaContext _context;
+
+        public PrestamosController(BibliotecaContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet("activos")]
+        public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosActivos()
+        {
+            // Ahora necesitamos hacer un "ThenInclude" para saltar del Préstamo -> Ejemplar -> Libro
+            return await _context.Prestamos
+                .Include(p => p.Ejemplar)
+                    .ThenInclude(e => e.Libro) 
+                .Include(p => p.Usuario)
+                .Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido)
+                .ToListAsync();
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Prestamo>> GetPrestamoPorId(int id)
+        {
+            var prestamo = await _context.Prestamos
+                .Include(p => p.Usuario)
+                .Include(p => p.Ejemplar)
+                    .ThenInclude(e => e.Libro) // <--- ESTA ES LA LÍNEA MÁGICA
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (prestamo == null) 
+                return NotFound(new { mensaje = "Préstamo no encontrado." });
+
+            return Ok(prestamo);
+        }
+
+        [HttpPost("prestar")]
+        public async Task<ActionResult> PrestarLibro([FromBody] PrestamoRequest request)
+        {
+            // AHORA BUSCAMOS EL EJEMPLAR FÍSICO, NO EL LIBRO
+            var ejemplar = await _context.Ejemplares.FindAsync(request.EjemplarId);
+            var usuario = await _context.Usuarios.FindAsync(request.UsuarioId);
+
+            if (ejemplar == null || usuario == null) 
+                return NotFound(new { mensaje = "Ejemplar físico o Usuario no encontrado." });
+
+            if (!ejemplar.DisponibleParaPrestamo) 
+                return BadRequest(new { mensaje = "Este ejemplar en particular ya está prestado o en reparación." });
+                
+            if (!usuario.PuedePedirPrestado) 
+                return BadRequest(new { mensaje = "El usuario está inhabilitado para pedir libros." });
+
+            var nuevoPrestamo = new Prestamo
+            {
+                EjemplarId = request.EjemplarId,
+                UsuarioId = request.UsuarioId,
+                FechaSalida = DateTime.UtcNow,
+                FechaVencimiento = DateTime.UtcNow.AddDays(7), 
+                Estado = EstadoPrestamo.Activo
+            };
+
+            // Marcamos el ejemplar físico como no disponible
+            ejemplar.DisponibleParaPrestamo = false;
+
+            _context.Prestamos.Add(nuevoPrestamo);
+            await _context.SaveChangesAsync();
+
+            return Ok(nuevoPrestamo);
+        }
+
+        [HttpPost("devolver/{id}")]
+        public async Task<ActionResult> DevolverLibro(int id)
+        {
+            var prestamo = await _context.Prestamos
+                .Include(p => p.Ejemplar)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (prestamo == null) 
+                return NotFound(new { mensaje = "Préstamo no encontrado." });
+
+            if (prestamo.Estado == EstadoPrestamo.Devuelto) 
+                return BadRequest(new { mensaje = "Este libro ya fue devuelto." });
+
+            prestamo.FechaDevolucionReal = DateTime.UtcNow;
+            prestamo.Estado = EstadoPrestamo.Devuelto;
+            
+            // Volvemos a habilitar el ejemplar físico
+            prestamo.Ejemplar.DisponibleParaPrestamo = true;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { mensaje = "Ejemplar devuelto con éxito." });
+        }
+    }
+
+    // DTO para recibir los datos del frontend
+    public class NuevoPrestamoManualDTO
+    {
+        public int LibroId { get; set; }
+        public string NombreLector { get; set; } = string.Empty;
+        public string CursoOAula { get; set; } = string.Empty;
+    }
+
+    public class PrestamoRequest
+    {
+        // ACÁ CAMBIÓ: Ahora pedimos EjemplarId
+        public int EjemplarId { get; set; } 
+        public int UsuarioId { get; set; }
+    }
+}

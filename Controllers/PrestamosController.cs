@@ -16,25 +16,57 @@ namespace Backend.Controllers
             _context = context;
         }
 
-        [HttpGet("activos")]
-        public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosActivos()
+        // [HttpGet("activos")]
+        // public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosActivos()
+        // {
+        //     return await _context.Prestamos
+        //         .Include(p => p.Ejemplar)
+        //             .ThenInclude(e => e.Libro) 
+        //         // ELIMINAMOS EL INCLUDE DEL USUARIO
+        //         .Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido)
+        //         .ToListAsync();
+        // }
+        // GET: api/prestamos?filtro=activos
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosFiltrados([FromQuery] string filtro = "activos")
         {
-            // Ahora necesitamos hacer un "ThenInclude" para saltar del Préstamo -> Ejemplar -> Libro
-            return await _context.Prestamos
+            var query = _context.Prestamos
                 .Include(p => p.Ejemplar)
-                    .ThenInclude(e => e.Libro) 
-                .Include(p => p.Usuario)
-                .Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido)
-                .ToListAsync();
+                    .ThenInclude(e => e.Libro)
+                .AsQueryable();
+
+            switch (filtro.ToLower())
+            {
+                case "vencidos":
+                    // Trae los vencidos explícitos o los activos cuya fecha ya se pasó
+                    query = query.Where(p => 
+                        p.Estado == EstadoPrestamo.Vencido || 
+                        (p.Estado == EstadoPrestamo.Activo && p.FechaVencimiento < DateTime.UtcNow));
+                    break;
+                case "finalizados":
+                    // Trae solo los devueltos
+                    query = query.Where(p => p.Estado == EstadoPrestamo.Devuelto);
+                    break;
+                case "activos":
+                default:
+                    // Trae los prestados que siguen en la calle (al día o vencidos)
+                    query = query.Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido);
+                    break;
+            }
+
+            // Ordenamos para que los más recientes salgan primero en la tabla
+            var prestamos = await query.OrderByDescending(p => p.FechaSalida).ToListAsync();
+            
+            return Ok(prestamos);
         }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<Prestamo>> GetPrestamoPorId(int id)
         {
             var prestamo = await _context.Prestamos
-                .Include(p => p.Usuario)
+                // ELIMINAMOS EL INCLUDE DEL USUARIO
                 .Include(p => p.Ejemplar)
-                    .ThenInclude(e => e.Libro) // <--- ESTA ES LA LÍNEA MÁGICA
+                    .ThenInclude(e => e.Libro) 
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (prestamo == null) 
@@ -43,26 +75,26 @@ namespace Backend.Controllers
             return Ok(prestamo);
         }
 
+        // FUSIONAMOS EL VIEJO METODO CON NUESTRO NUEVO DTO MANUAL
         [HttpPost("prestar")]
-        public async Task<ActionResult> PrestarLibro([FromBody] PrestamoRequest request)
+        public async Task<ActionResult> PrestarLibro([FromBody] NuevoPrestamoManualDTO dto)
         {
-            // AHORA BUSCAMOS EL EJEMPLAR FÍSICO, NO EL LIBRO
-            var ejemplar = await _context.Ejemplares.FindAsync(request.EjemplarId);
-            var usuario = await _context.Usuarios.FindAsync(request.UsuarioId);
+            if (string.IsNullOrWhiteSpace(dto.NombreLector))
+                return BadRequest(new { mensaje = "El nombre de quien retira es obligatorio." });
 
-            if (ejemplar == null || usuario == null) 
-                return NotFound(new { mensaje = "Ejemplar físico o Usuario no encontrado." });
+            var ejemplar = await _context.Ejemplares.FindAsync(dto.EjemplarId);
+
+            if (ejemplar == null) 
+                return NotFound(new { mensaje = "Ejemplar físico no encontrado." });
 
             if (!ejemplar.DisponibleParaPrestamo) 
                 return BadRequest(new { mensaje = "Este ejemplar en particular ya está prestado o en reparación." });
-                
-            if (!usuario.PuedePedirPrestado) 
-                return BadRequest(new { mensaje = "El usuario está inhabilitado para pedir libros." });
 
             var nuevoPrestamo = new Prestamo
             {
-                EjemplarId = request.EjemplarId,
-                UsuarioId = request.UsuarioId,
+                EjemplarId = dto.EjemplarId,
+                NombreLector = dto.NombreLector,   // <- CAMPO MANUAL
+                CursoOAula = dto.CursoOAula,       // <- CAMPO MANUAL
                 FechaSalida = DateTime.UtcNow,
                 FechaVencimiento = DateTime.UtcNow.AddDays(7), 
                 Estado = EstadoPrestamo.Activo
@@ -102,10 +134,11 @@ namespace Backend.Controllers
         }
     }
 
-    public class PrestamoRequest
+    // DTO REVISADO: Usamos EjemplarId para saber exactamente qué copia se llevan
+    public class NuevoPrestamoManualDTO
     {
-        // ACÁ CAMBIÓ: Ahora pedimos EjemplarId
         public int EjemplarId { get; set; } 
-        public int UsuarioId { get; set; }
+        public string NombreLector { get; set; } = string.Empty;
+        public string CursoOAula { get; set; } = string.Empty;
     }
 }
