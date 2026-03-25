@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
+
 using System.Net.Http;
 using System.Text.Json;
 
@@ -12,11 +13,14 @@ namespace Backend.Controllers
     public class LibrosController : ControllerBase
     {
         private readonly BibliotecaContext _context;
+        private readonly IImagenService _imagenService;
 
-        public LibrosController(BibliotecaContext context)
+        public LibrosController(BibliotecaContext context, IImagenService imagenService)
         {
             _context = context;
+            _imagenService = imagenService;
         }
+        
 
         // GET: api/libros
         [HttpGet]
@@ -86,9 +90,9 @@ namespace Backend.Controllers
             return Ok(libros);
         }
         
-        // POST: api/libros
+       // POST: api/libros
         [HttpPost]
-        public async Task<ActionResult<Libro>> PostLibro([FromBody] LibroCreacionDTO dto)
+        public async Task<ActionResult<Libro>> PostLibro([FromForm] LibroCreacionDTO dto) // <--- OJO ACÁ: [FromForm]
         {
             var nuevoLibro = new Libro
             {
@@ -99,10 +103,14 @@ namespace Backend.Controllers
                 AnioPublicacion = dto.AnioPublicacion,
                 Isbn = dto.Isbn,
                 Clasificacion = dto.Clasificacion,
-                CodigoCutter = dto.CodigoCutter
+                CodigoCutter = dto.CodigoCutter,
+                ReseniaSinopsis = dto.ReseniaSinopsis,
+                CantidadPaginas = dto.CantidadPaginas,
+                PortadaUrl = dto.PortadaUrl,
+                UsarPortadaLocal = dto.UsarPortadaLocal
             };
 
-            // 1. Armar los ejemplares físicos
+            // 1. Armar los ejemplares
             foreach (var ej in dto.Ejemplares)
             {
                 nuevoLibro.Ejemplares.Add(new Ejemplar 
@@ -113,36 +121,50 @@ namespace Backend.Controllers
                 });
             }
 
-            // 2. Armar los Tags (Acá está la magia)
+            // 2. Armar los Tags
             foreach (var nombreTag in dto.Tags)
             {
                 var tagLimpio = nombreTag.Trim();
-                // Buscamos si el tag ya existe en la base de datos (ignorando mayúsculas)
-                var tagExistente = await _context.Tags
-                    .FirstOrDefaultAsync(t => t.Nombre.ToLower() == tagLimpio.ToLower());
+                var tagExistente = await _context.Tags.FirstOrDefaultAsync(t => t.Nombre.ToLower() == tagLimpio.ToLower());
                 
-                if (tagExistente != null)
-                {
-                    nuevoLibro.Tags.Add(tagExistente); // Lo vinculamos
-                }
-                else
-                {
-                    nuevoLibro.Tags.Add(new Tag { Nombre = tagLimpio }); // Lo creamos de cero
-                }
+                if (tagExistente != null) nuevoLibro.Tags.Add(tagExistente);
+                else nuevoLibro.Tags.Add(new Tag { Nombre = tagLimpio });
             }
 
+            // 3. PRIMER GUARDADO: Guardamos para obtener el ID real de la base de datos
             _context.Libros.Add(nuevoLibro);
             await _context.SaveChangesAsync();
 
+            // 4. MAGIA DE IMÁGENES: Ahora que tenemos el ID (ej: nuevoLibro.Id = 17), procesamos la foto
+            if (dto.UsarPortadaLocal)
+            {
+                if (dto.ArchivoPortada != null)
+                {
+                    // Si el usuario subió una foto desde su PC
+                    nuevoLibro.PortadaLocalUrl = await _imagenService.GuardarImagenSubida(dto.ArchivoPortada, nuevoLibro.Id);
+                }
+                else if (!string.IsNullOrWhiteSpace(dto.PortadaUrl))
+                {
+                    // Si quiere que C# descargue la foto de Google automáticamente
+                    nuevoLibro.PortadaLocalUrl = await _imagenService.DescargarImagenDesdeUrl(dto.PortadaUrl, nuevoLibro.Id);
+                }
+
+                // Si logramos guardar la imagen localmente, actualizamos el registro
+                if (!string.IsNullOrEmpty(nuevoLibro.PortadaLocalUrl))
+                {
+                    await _context.SaveChangesAsync();
+                }
+            }
+
             return CreatedAtAction(nameof(GetLibros), new { id = nuevoLibro.Id }, nuevoLibro);
         }
+
         // PUT: api/libros/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> EditarLibro(int id, [FromBody] LibroEdicionDTO dto)
+        public async Task<IActionResult> EditarLibro(int id, [FromForm] LibroEdicionDTO dto) // <--- [FromForm]
         {
             if (id != dto.Id) return BadRequest(new { mensaje = "El ID no coincide." });
 
-            // Buscamos el libro con todas sus relaciones cargadas
             var libro = await _context.Libros
                 .Include(l => l.Ejemplares)
                 .Include(l => l.Tags)
@@ -150,7 +172,7 @@ namespace Backend.Controllers
 
             if (libro == null) return NotFound(new { mensaje = "Libro no encontrado." });
 
-            // 1. Actualizar datos básicos (MARC21)
+            // 1. Actualizar datos básicos
             libro.Titulo = dto.Titulo;
             libro.Subtitulo = dto.Subtitulo;
             libro.AutorPrincipal = dto.AutorPrincipal;
@@ -159,10 +181,34 @@ namespace Backend.Controllers
             libro.Isbn = dto.Isbn;
             libro.Clasificacion = dto.Clasificacion;
             libro.CodigoCutter = dto.CodigoCutter;
+            libro.ReseniaSinopsis = dto.ReseniaSinopsis;
+            libro.CantidadPaginas = dto.CantidadPaginas;
+            libro.PortadaUrl = dto.PortadaUrl;
+            libro.UsarPortadaLocal = dto.UsarPortadaLocal;
 
-            // 2. Actualizar Tags (Borramos las viejas relaciones y armamos las nuevas)
+            // 2. MAGIA DE IMÁGENES (Actualización)
+            if (dto.UsarPortadaLocal)
+            {
+                if (dto.ArchivoPortada != null)
+                {
+                    // Si subió un archivo nuevo, pisamos la foto vieja
+                    libro.PortadaLocalUrl = await _imagenService.GuardarImagenSubida(dto.ArchivoPortada, libro.Id);
+                }
+                else if (!string.IsNullOrWhiteSpace(dto.PortadaUrl) && string.IsNullOrEmpty(libro.PortadaLocalUrl))
+                {
+                    // Si tildó la caja pero no subió archivo, descargamos de Google (solo si no la habíamos descargado antes)
+                    libro.PortadaLocalUrl = await _imagenService.DescargarImagenDesdeUrl(dto.PortadaUrl, libro.Id);
+                }
+            }
+            else
+            {
+                // Si destildó la caja, "olvidamos" la foto local y volvemos a usar el link de internet
+                libro.PortadaLocalUrl = null; 
+            }
+
+            // 3. Actualizar Tags
             libro.Tags.Clear();
-            foreach (var nombreTag in dto.Tags)
+            foreach (var nombreTag in dto.Tags ?? new List<string>())
             {
                 var tagLimpio = nombreTag.Trim();
                 var tagExistente = await _context.Tags.FirstOrDefaultAsync(t => t.Nombre.ToLower() == tagLimpio.ToLower());
@@ -171,18 +217,15 @@ namespace Backend.Controllers
                 else libro.Tags.Add(new Tag { Nombre = tagLimpio });
             }
 
-            // 3. Actualizar Ejemplares (El inventario físico)
-            // A) Eliminar los ejemplares que el usuario quitó en la pantalla
+            // 4. Actualizar Ejemplares
             var idsRecibidos = dto.Ejemplares.Where(e => e.Id.HasValue).Select(e => e.Id.Value).ToList();
             var ejemplaresABorrar = libro.Ejemplares.Where(e => !idsRecibidos.Contains(e.Id)).ToList();
             _context.Ejemplares.RemoveRange(ejemplaresABorrar);
 
-            // B) Actualizar los existentes o agregar los nuevos
             foreach (var ejDto in dto.Ejemplares)
             {
                 if (ejDto.Id.HasValue) 
                 {
-                    // Actualizamos un ejemplar que ya existía (ej: se rompió y cambiamos el estado)
                     var ejExistente = libro.Ejemplares.FirstOrDefault(e => e.Id == ejDto.Id.Value);
                     if (ejExistente != null)
                     {
@@ -193,7 +236,6 @@ namespace Backend.Controllers
                 }
                 else 
                 {
-                    // Es un ejemplar nuevo que agregaron haciendo clic en "+ Agregar Copia"
                     libro.Ejemplares.Add(new Ejemplar 
                     { 
                         NumeroInventario = ejDto.NumeroInventario,
@@ -206,7 +248,6 @@ namespace Backend.Controllers
             await _context.SaveChangesAsync();
             return Ok(libro);
         }
-
         // GET: api/libros/inventario
         [HttpGet("inventario")]
         public async Task<ActionResult<IEnumerable<object>>> GetInventarioCompleto()
@@ -275,45 +316,56 @@ namespace Backend.Controllers
         }
 
         // GET: api/libros/lookup/isbn/978...
-        [HttpGet("lookup/isbn/{isbn}")]
+       [HttpGet("lookup/isbn/{isbn}")]
         public async Task<ActionResult<LibroLookupDTO>> LookupPorIsbn(string isbn)
         {
             if (string.IsNullOrWhiteSpace(isbn)) return BadRequest();
 
-            // 1. Preparamos el cliente para salir a internet
             using var httpClient = new HttpClient();
             try
             {
-                // 2. Consultamos la API pública de Google Books
                 var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}";
                 var response = await httpClient.GetAsync(url);
                 
                 if (!response.IsSuccessStatusCode) 
                     return StatusCode(502, new { mensaje = "Error consultando a Google Books." });
 
-                // 3. Leemos y parseamos el JSON complejo de Google
                 var jsonString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(jsonString);
                 var root = doc.RootElement;
 
-                // Verificamos si Google encontró algo
                 if (root.GetProperty("totalItems").GetInt32() == 0)
                     return NotFound(new { mensaje = "Libro no encontrado en la base de datos mundial." });
 
-                // Extraemos la información del primer resultado
                 var volumeInfo = root.GetProperty("items")[0].GetProperty("volumeInfo");
 
-                // 4. Mapeamos al DTO simple
                 var resultado = new LibroLookupDTO
                 {
                     Titulo = volumeInfo.TryGetProperty("title", out var t) ? t.GetString()! : "",
                     Subtitulo = volumeInfo.TryGetProperty("subtitle", out var s) ? s.GetString()! : "",
-                    // Google devuelve array de autores, nos quedamos con el primero
                     AutorPrincipal = volumeInfo.TryGetProperty("authors", out var a) && a.GetArrayLength() > 0 ? a[0].GetString()! : "",
                     Editorial = volumeInfo.TryGetProperty("publisher", out var p) ? p.GetString()! : "",
-                    // Google devuelve "YYYY-MM-DD", nos quedamos con los primeros 4 chars
-                    AnioPublicacion = volumeInfo.TryGetProperty("publishedDate", out var d) && d.GetString()!.Length >= 4 ? d.GetString()!.Substring(0, 4) : ""
+                    AnioPublicacion = volumeInfo.TryGetProperty("publishedDate", out var d) && d.GetString()!.Length >= 4 ? d.GetString()!.Substring(0, 4) : "",
+                    
+                    // NUEVA EXTRACCIÓN SEGURA
+                    ReseniaSinopsis = volumeInfo.TryGetProperty("description", out var desc) ? desc.GetString()! : "",
+                    CantidadPaginas = volumeInfo.TryGetProperty("pageCount", out var pc) ? pc.GetInt32() : null,
                 };
+
+                // Extraemos la Portada (está anidada adentro de imageLinks)
+                if (volumeInfo.TryGetProperty("imageLinks", out var images))
+                {
+                    resultado.PortadaUrl = images.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString()! : "";
+                }
+
+                // Extraemos las Categorías (es un Array de strings)
+                if (volumeInfo.TryGetProperty("categories", out var cats) && cats.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var cat in cats.EnumerateArray())
+                    {
+                        resultado.Categorias.Add(cat.GetString()!);
+                    }
+                }
 
                 return Ok(resultado);
             }
@@ -497,6 +549,11 @@ namespace Backend.Controllers
         public string? Isbn { get; set; }
         public string? Clasificacion { get; set; }
         public string? CodigoCutter { get; set; }
+        public string? ReseniaSinopsis { get; set; }
+        public int? CantidadPaginas { get; set; }
+        public string? PortadaUrl { get; set; }
+        public bool UsarPortadaLocal { get; set; }
+        public IFormFile? ArchivoPortada { get; set; }
         
         public List<EjemplarDTO> Ejemplares { get; set; } = new();
         public List<string> Tags { get; set; } = new();
@@ -518,6 +575,11 @@ namespace Backend.Controllers
         public string? Isbn { get; set; }
         public string? Clasificacion { get; set; }
         public string? CodigoCutter { get; set; }
+        public string? ReseniaSinopsis { get; set; }
+        public int? CantidadPaginas { get; set; }
+        public string? PortadaUrl { get; set; }
+        public bool UsarPortadaLocal { get; set; }
+        public IFormFile? ArchivoPortada { get; set; }
         
         public List<EjemplarEdicionDTO> Ejemplares { get; set; } = new();
         public List<string> Tags { get; set; } = new();
@@ -534,12 +596,17 @@ namespace Backend.Controllers
     // DTO simple para devolver datos encontrados en internet
     public class LibroLookupDTO
     {
-        public string Titulo { get; set; } = string.Empty;
-        public string Subtitulo { get; set; } = string.Empty;
-        public string AutorPrincipal { get; set; } = string.Empty;
-        public string Editorial { get; set; } = string.Empty;
-        public string AnioPublicacion { get; set; } = string.Empty;
-        // La CDD/CDU rara vez viene directa de Google, así que no la sumamos acá.
+        public string Titulo { get; set; } = "";
+        public string Subtitulo { get; set; } = "";
+        public string AutorPrincipal { get; set; } = "";
+        public string Editorial { get; set; } = "";
+        public string AnioPublicacion { get; set; } = "";
+
+        // --- NUEVOS CAMPOS ---
+        public string ReseniaSinopsis { get; set; } = "";
+        public int? CantidadPaginas { get; set; }
+        public string PortadaUrl { get; set; } = "";
+        public List<string> Categorias { get; set; } = new List<string>();
     }
 
     

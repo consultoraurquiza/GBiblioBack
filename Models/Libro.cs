@@ -15,6 +15,13 @@ public class Libro
     // --- Signatura Topográfica (Para encontrarlo en el estante) ---
     public string? Clasificacion { get; set; } // Ej: 863 (Literatura) -> Sistema Dewey o CDU
     public string? CodigoCutter { get; set; }  // Ej: B732 (Borges)
+
+    public string? ReseniaSinopsis { get; set; } // <--- Aquí va la descripción larga
+    public int? CantidadPaginas { get; set; }
+    public string? PortadaUrl { get; set; }
+
+    public string? PortadaLocalUrl { get; set; }  // Ej: "/portadas/libro_17.jpg"
+    public bool UsarPortadaLocal { get; set; } = false; // bool check
     
     // Relación con los Tags (Muchos a Muchos)
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Backend.Data; // Para que encuentre tu BibliotecaContext
 
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Permitir que cualquier origen (como nuestro frontend local) se conecte
@@ -28,8 +29,12 @@ builder.Services.AddDbContext<BibliotecaContext>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Registramos el servicio de imágenes
+builder.Services.AddScoped<IImagenService, ImagenService>();
+
 var app = builder.Build();
 app.UseCors("PermitirFrontend");
+app.UseStaticFiles();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
