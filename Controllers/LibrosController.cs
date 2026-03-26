@@ -316,64 +316,155 @@ namespace Backend.Controllers
         }
 
         // GET: api/libros/lookup/isbn/978...
-       [HttpGet("lookup/isbn/{isbn}")]
-        public async Task<ActionResult<LibroLookupDTO>> LookupPorIsbn(string isbn)
+        [HttpGet("lookup/isbn/{isbn}")]
+        public async Task<ActionResult<LibroLookupDTO>> LookupPorIsbn(string isbn, [FromQuery] string proveedor = "todas")
         {
             if (string.IsNullOrWhiteSpace(isbn)) return BadRequest();
 
-            using var httpClient = new HttpClient();
             try
             {
-                var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}";
-                var response = await httpClient.GetAsync(url);
-                
-                if (!response.IsSuccessStatusCode) 
-                    return StatusCode(502, new { mensaje = "Error consultando a Google Books." });
+                LibroLookupDTO? resultado = null;
 
-                var jsonString = await response.Content.ReadAsStringAsync();
-                using var doc = JsonDocument.Parse(jsonString);
-                var root = doc.RootElement;
-
-                if (root.GetProperty("totalItems").GetInt32() == 0)
-                    return NotFound(new { mensaje = "Libro no encontrado en la base de datos mundial." });
-
-                var volumeInfo = root.GetProperty("items")[0].GetProperty("volumeInfo");
-
-                var resultado = new LibroLookupDTO
+                // 1. Intento con Google Books
+                if (proveedor == "google" || proveedor == "todas")
                 {
-                    Titulo = volumeInfo.TryGetProperty("title", out var t) ? t.GetString()! : "",
-                    Subtitulo = volumeInfo.TryGetProperty("subtitle", out var s) ? s.GetString()! : "",
-                    AutorPrincipal = volumeInfo.TryGetProperty("authors", out var a) && a.GetArrayLength() > 0 ? a[0].GetString()! : "",
-                    Editorial = volumeInfo.TryGetProperty("publisher", out var p) ? p.GetString()! : "",
-                    AnioPublicacion = volumeInfo.TryGetProperty("publishedDate", out var d) && d.GetString()!.Length >= 4 ? d.GetString()!.Substring(0, 4) : "",
-                    
-                    // NUEVA EXTRACCIÓN SEGURA
-                    ReseniaSinopsis = volumeInfo.TryGetProperty("description", out var desc) ? desc.GetString()! : "",
-                    CantidadPaginas = volumeInfo.TryGetProperty("pageCount", out var pc) ? pc.GetInt32() : null,
-                };
-
-                // Extraemos la Portada (está anidada adentro de imageLinks)
-                if (volumeInfo.TryGetProperty("imageLinks", out var images))
-                {
-                    resultado.PortadaUrl = images.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString()! : "";
+                    resultado = await BuscarEnGoogleBooks(isbn);
                 }
 
-                // Extraemos las Categorías (es un Array de strings)
-                if (volumeInfo.TryGetProperty("categories", out var cats) && cats.ValueKind == JsonValueKind.Array)
+                // 2. Intento con Open Library (Si eligió OL, o si eligió "todas" y Google falló)
+                if ((resultado == null && proveedor == "todas") || proveedor == "openlibrary")
                 {
-                    foreach (var cat in cats.EnumerateArray())
-                    {
-                        resultado.Categorias.Add(cat.GetString()!);
-                    }
+                    resultado = await BuscarEnOpenLibrary(isbn);
+                }
+
+                // 3. Acá podés agregar tu 3ra API en el futuro (ej: ISBNdb)
+                // if ((resultado == null && proveedor == "todas") || proveedor == "isbndb") { ... }
+
+                if (resultado == null)
+                {
+                    return NotFound(new { mensaje = "Libro no encontrado en las bases de datos seleccionadas." });
                 }
 
                 return Ok(resultado);
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[ERROR FATAL] {ex.Message}");
                 return StatusCode(500, new { mensaje = "Error interno al buscar ISBN.", error = ex.Message });
             }
         }
+
+        // --- MÉTODOS PRIVADOS DE CADA API ---
+
+        private async Task<LibroLookupDTO?> BuscarEnGoogleBooks(string isbn)
+        {
+            using var httpClient = new HttpClient();
+            // Acá podés sumar tu &key=TU_API_KEY para evitar el error 429
+            var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"; 
+            var response = await httpClient.GetAsync(url);
+            
+            if (!response.IsSuccessStatusCode) return null;
+
+            var jsonString = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(jsonString);
+            var root = doc.RootElement;
+
+            if (root.GetProperty("totalItems").GetInt32() == 0) return null;
+
+            var volumeInfo = root.GetProperty("items")[0].GetProperty("volumeInfo");
+            var resultado = new LibroLookupDTO
+            {
+                Titulo = volumeInfo.TryGetProperty("title", out var t) ? t.GetString()! : "",
+                Subtitulo = volumeInfo.TryGetProperty("subtitle", out var s) ? s.GetString()! : "",
+                AutorPrincipal = volumeInfo.TryGetProperty("authors", out var a) && a.GetArrayLength() > 0 ? a[0].GetString()! : "",
+                Editorial = volumeInfo.TryGetProperty("publisher", out var p) ? p.GetString()! : "",
+                AnioPublicacion = volumeInfo.TryGetProperty("publishedDate", out var d) && d.GetString()!.Length >= 4 ? d.GetString()!.Substring(0, 4) : "",
+                ReseniaSinopsis = volumeInfo.TryGetProperty("description", out var desc) ? desc.GetString()! : "",
+                CantidadPaginas = volumeInfo.TryGetProperty("pageCount", out var pc) ? pc.GetInt32() : null,
+            };
+
+            if (volumeInfo.TryGetProperty("imageLinks", out var images))
+                resultado.PortadaUrl = images.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString()! : "";
+
+            if (volumeInfo.TryGetProperty("categories", out var cats) && cats.ValueKind == JsonValueKind.Array)
+                foreach (var cat in cats.EnumerateArray()) resultado.Categorias.Add(cat.GetString()!);
+
+            return resultado;
+        }
+
+        private async Task<LibroLookupDTO?> BuscarEnOpenLibrary(string isbn)
+        {
+            using var httpClient = new HttpClient();
+            var url = $"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data";
+            var response = await httpClient.GetAsync(url);
+            
+            if (!response.IsSuccessStatusCode) return null;
+
+            var jsonString = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(jsonString);
+            var root = doc.RootElement;
+
+            // OpenLibrary devuelve un objeto con una key dinámica "ISBN:1234..."
+            if (!root.TryGetProperty($"ISBN:{isbn}", out var bookData)) return null;
+
+            var resultado = new LibroLookupDTO
+            {
+                Titulo = bookData.TryGetProperty("title", out var t) ? t.GetString()! : "",
+                CantidadPaginas = bookData.TryGetProperty("number_of_pages", out var pc) ? pc.GetInt32() : null,
+                AnioPublicacion = bookData.TryGetProperty("publish_date", out var pd) && pd.GetString()!.Length >= 4 ? pd.GetString()!.Substring(0, 4) : ""
+            };
+
+            if (bookData.TryGetProperty("authors", out var authors) && authors.GetArrayLength() > 0)
+                resultado.AutorPrincipal = authors[0].TryGetProperty("name", out var n) ? n.GetString()! : "";
+
+            if (bookData.TryGetProperty("publishers", out var pubs) && pubs.GetArrayLength() > 0)
+                resultado.Editorial = pubs[0].TryGetProperty("name", out var n) ? n.GetString()! : "";
+
+            if (bookData.TryGetProperty("cover", out var cover))
+                resultado.PortadaUrl = cover.TryGetProperty("medium", out var m) ? m.GetString()! : "";
+
+            if (bookData.TryGetProperty("subjects", out var subjects) && subjects.ValueKind == JsonValueKind.Array)
+                foreach (var sub in subjects.EnumerateArray()) 
+                    resultado.Categorias.Add(sub.TryGetProperty("name", out var sn) ? sn.GetString()! : "");
+
+            return resultado;
+        }
+
+        // GET: api/libros/autores/buscar?q=bor
+        [HttpGet("autores/buscar")]
+        public async Task<ActionResult<IEnumerable<string>>> BuscarAutores([FromQuery] string q)
+        {
+            // Solo buscamos si el usuario tipeó al menos 2 letras
+            if (string.IsNullOrWhiteSpace(q) || q.Length < 2) return Ok(new List<string>());
+            
+            var autores = await _context.Libros
+                .Where(l => l.AutorPrincipal.ToLower().Contains(q.ToLower()))
+                .Select(l => l.AutorPrincipal)
+                .Distinct() // Para no devolver 20 veces a "Borges" si tiene 20 libros
+                .Take(10)   // Solo los primeros 10 para que el menú no sea infinito
+                .ToListAsync();
+                
+            return Ok(autores);
+        }
+
+        [HttpGet("tags/buscar")]
+        public async Task<ActionResult<IEnumerable<string>>> BuscarTagsUnesco([FromQuery] string q)
+        {
+            // Pide 2 letras mínimo para no saturar la base de datos
+            if (string.IsNullOrWhiteSpace(q) || q.Length < 2) return Ok(new List<string>());
+            
+            // AHORA BUSCAMOS EN EL TESAURO OFICIAL, NO EN LOS TAGS SUCIOS
+            var tags = await _context.TesauroUnesco
+                .Where(t => t.Termino.ToLower().Contains(q.ToLower()))
+                .OrderBy(t => t.Termino) // Orden alfabético para que sea más prolijo
+                .Select(t => t.Termino)
+                .Take(10)
+                .ToListAsync();
+                
+            return Ok(tags);
+        }
+
+        
 
         // GET: api/libros/cutter-table
         [HttpGet("cutter-table")]

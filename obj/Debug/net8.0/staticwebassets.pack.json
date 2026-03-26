@@ -5,6 +5,10 @@
       "PackagePath": "staticwebassets\\portadas\\libro_18_google.jpg"
     },
     {
+      "Id": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\portadas\\libro_19_google.jpg",
+      "PackagePath": "staticwebassets\\portadas\\libro_19_google.jpg"
+    },
+    {
       "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.Backend.Microsoft.AspNetCore.StaticWebAssets.props",
       "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
     },
