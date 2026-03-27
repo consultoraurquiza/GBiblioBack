@@ -21,7 +21,7 @@ namespace Backend.Controllers
         {
             return await _context.PrestamosMateriales
                 .Include(p => p.Material)
-                .Include(p => p.Usuario)
+                // Le sacamos el .Include(p => p.Usuario) porque ya no existe
                 .Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido)
                 .ToListAsync();
         }
@@ -29,28 +29,32 @@ namespace Backend.Controllers
         [HttpPost("prestar")]
         public async Task<ActionResult> PrestarMaterial([FromBody] PrestamoMaterialRequest request)
         {
+            if (request.Cantidad <= 0)
+                return BadRequest(new { mensaje = "La cantidad debe ser mayor a cero." });
+
+            if (string.IsNullOrWhiteSpace(request.NombreSolicitante))
+                return BadRequest(new { mensaje = "Debes ingresar a quién se le presta el equipo." });
+
             var material = await _context.Materiales.FindAsync(request.MaterialId);
-            var usuario = await _context.Usuarios.FindAsync(request.UsuarioId);
 
-            if (material == null || usuario == null) 
-                return NotFound(new { mensaje = "Material o Usuario no encontrado." });
+            if (material == null) 
+                return NotFound(new { mensaje = "Material no encontrado." });
 
-            if (material.CantidadDisponible <= 0) 
-                return BadRequest(new { mensaje = "No hay unidades disponibles de este material." });
-                
-            if (!usuario.PuedePedirPrestado) 
-                return BadRequest(new { mensaje = "El usuario está inhabilitado." });
+            if (material.CantidadDisponible < request.Cantidad) 
+                return BadRequest(new { mensaje = $"Stock insuficiente. Solo hay {material.CantidadDisponible} unidades." });
 
             var nuevoPrestamo = new PrestamoMaterial
             {
                 MaterialId = request.MaterialId,
-                UsuarioId = request.UsuarioId,
+                NombreSolicitante = request.NombreSolicitante, // Guardamos el texto libre
+                CantidadPrestada = request.Cantidad,
                 FechaSalida = DateTime.UtcNow,
-                FechaVencimiento = DateTime.UtcNow.AddDays(1), // Generalmente se devuelven rápido
+                FechaVencimiento = DateTime.UtcNow.AddDays(1), 
                 Estado = EstadoPrestamo.Activo
             };
 
-            material.CantidadDisponible -= 1;
+            material.CantidadDisponible -= request.Cantidad;
+            
             _context.PrestamosMateriales.Add(nuevoPrestamo);
             await _context.SaveChangesAsync();
 
@@ -69,16 +73,20 @@ namespace Backend.Controllers
 
             prestamo.FechaDevolucionReal = DateTime.UtcNow;
             prestamo.Estado = EstadoPrestamo.Devuelto;
-            prestamo.Material.CantidadDisponible += 1;
+            prestamo.Material.CantidadDisponible += prestamo.CantidadPrestada;
 
             await _context.SaveChangesAsync();
-            return Ok(new { mensaje = "Material devuelto." });
+            return Ok(new { mensaje = "Material devuelto correctamente." });
         }
     }
 
     public class PrestamoMaterialRequest
     {
         public int MaterialId { get; set; }
-        public int UsuarioId { get; set; }
+        
+        // Cambiamos UsuarioId por el texto
+        public string NombreSolicitante { get; set; } = string.Empty; 
+        
+        public int Cantidad { get; set; } = 1; 
     }
 }

@@ -3,6 +3,7 @@ using System;
 using Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Backend.Migrations
 {
     [DbContext(typeof(BibliotecaContext))]
-    partial class BibliotecaContextModelSnapshot : ModelSnapshot
+    [Migration("20260327130259_PrestamosSinUsuarios")]
+    partial class PrestamosSinUsuarios
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -118,9 +121,6 @@ namespace Backend.Migrations
                     b.Property<int>("CantidadTotal")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("Habilitado")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Marca")
                         .HasColumnType("text");
 
@@ -132,9 +132,6 @@ namespace Backend.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("NumeroSerie")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Observaciones")
                         .HasColumnType("text");
 
                     b.Property<string>("UbicacionFisica")

@@ -16,6 +16,9 @@ public class Material
     public int CantidadTotal { get; set; }
     public int CantidadDisponible { get; set; }
 
+    public string? Observaciones { get; set; } // Ej: "Falta cable de poder", "Lámpara quemada"
+    public bool Habilitado { get; set; } = true; // true = Operativo, false = Roto/En Reparación
+
     [JsonIgnore]
     public ICollection<PrestamoMaterial> PrestamosMateriales { get; set; } = new List<PrestamoMaterial>();
 }
