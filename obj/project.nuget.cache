@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "DTCVcWnL4W0=",
+  "dgSpecHash": "A8U+O0omxzg=",
   "success": true,
-  "projectFilePath": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj",
+  "projectFilePath": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\Ivan\\.nuget\\packages\\htmlagilitypack\\1.12.4\\htmlagilitypack.1.12.4.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.aspnetcore.openapi\\8.0.17\\microsoft.aspnetcore.openapi.8.0.17.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\6.0.0\\microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512",
@@ -51,10 +52,10 @@
     "C:\\Users\\Ivan\\.nuget\\packages\\system.text.encodings.web\\8.0.0\\system.text.encodings.web.8.0.0.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\system.text.json\\8.0.4\\system.text.json.8.0.4.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\system.threading.channels\\6.0.0\\system.threading.channels.6.0.0.nupkg.sha512",
-    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.17\\microsoft.netcore.app.ref.8.0.17.nupkg.sha512",
-    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.17\\microsoft.windowsdesktop.app.ref.8.0.17.nupkg.sha512",
     "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.17\\microsoft.aspnetcore.app.ref.8.0.17.nupkg.sha512",
-    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.17\\microsoft.netcore.app.host.win-x64.8.0.17.nupkg.sha512"
+    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.17\\microsoft.netcore.app.host.win-x64.8.0.17.nupkg.sha512",
+    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.17\\microsoft.netcore.app.ref.8.0.17.nupkg.sha512",
+    "C:\\Users\\Ivan\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.17\\microsoft.windowsdesktop.app.ref.8.0.17.nupkg.sha512"
   ],
   "logs": []
 }

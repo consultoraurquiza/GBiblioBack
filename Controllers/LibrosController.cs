@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
+using HtmlAgilityPack;
+using System.Net;
 
 using System.Net.Http;
 using System.Text.Json;
@@ -429,6 +431,237 @@ namespace Backend.Controllers
 
             return resultado;
         }
+// Buscador Scrapper para BuscaLibre (¡OJO! Usar solo si las APIs oficiales no te dan resultado, y tené cuidado con los bloqueos por parte del sitio)
+
+        // --- EL NUEVO MOTOR DE BÚSQUEDA POR TÍTULO ---
+        // Se llama así: GET /api/libros/search-by-title?titulo=matematicas 3
+        [HttpGet("scraper/buscar")]
+        public async Task<ActionResult> BuscarListaPorTitulo([FromQuery] string titulo, [FromQuery] string proveedor = "yenny")
+        {
+            if (string.IsNullOrWhiteSpace(titulo)) return BadRequest(new { mensaje = "Debes ingresar un título." });
+
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            var listaResultados = new List<dynamic>();
+
+            try
+            {
+                if (proveedor.ToLower() == "yenny")
+                {
+                    // === MOTOR YENNY (TODOTERRENO) ===
+                    var url = $"https://www.yenny-elateneo.com/search/?q={WebUtility.UrlEncode(titulo)}";
+                    var response = await client.GetAsync(url);
+                    if (!response.IsSuccessStatusCode) return StatusCode(500, new { mensaje = "Yenny bloqueó la conexión." });
+
+                    var doc = new HtmlDocument();
+                    var html = await response.Content.ReadAsStringAsync();
+                    doc.LoadHtml(html);
+
+                    // Buscamos las cajas de TiendaNube
+                    var productosNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'js-item-product')]") 
+                                      ?? doc.DocumentNode.SelectNodes("//div[contains(@class, 'item-product')]");
+
+                    if (productosNodes == null || productosNodes.Count == 0)
+                        return Ok(new List<dynamic>());
+
+                    foreach (var product in productosNodes.Take(5))
+                    {
+                        // 1. EXTRAER LINK
+                        var linkNode = product.SelectSingleNode(".//a");
+                        var linkComercial = linkNode?.GetAttributeValue("href", "") ?? "";
+                        if (linkComercial.StartsWith("/")) linkComercial = "https://www.yenny-elateneo.com" + linkComercial;
+
+                        var autorNode = product.SelectSingleNode(".//p[contains(@class, 'text-accent')]") 
+                        ?? product.SelectSingleNode(".//*[contains(@class, 'item-brand')]");
+                        var autorOriginal = WebUtility.HtmlDecode(autorNode?.InnerText?.Trim() ?? "Autor Desconocido");
+
+                        // 2. EXTRAER TÍTULO (Buscamos en el texto, si falla buscamos en el atributo title, si falla en el alt de la imagen)
+                        var tituloNode = product.SelectSingleNode(".//*[contains(@class, 'item-name')]") ?? product.SelectSingleNode(".//*[@data-store='product-item-name']");
+                        var tituloLimpio = tituloNode?.InnerText?.Trim();
+                        
+                        if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = linkNode?.GetAttributeValue("title", "")?.Trim();
+                        if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = product.SelectSingleNode(".//img")?.GetAttributeValue("alt", "")?.Trim();
+                        if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = "Sin título";
+
+                        // 3. EXTRAER IMAGEN (TiendaNube usa data-srcset para esconderla)
+                        var imgNode = product.SelectSingleNode(".//img");
+                        var portadaUrl = imgNode?.GetAttributeValue("data-srcset", "") ?? 
+                                         imgNode?.GetAttributeValue("data-src", "") ?? 
+                                         imgNode?.GetAttributeValue("src", "") ?? "";
+                        
+                        // Si trae un srcset gigante (ej: "foto.jpg 300w, foto2.jpg 600w"), nos quedamos con la primera
+                        if (portadaUrl.Contains(" ")) portadaUrl = portadaUrl.Split(' ')[0];
+                        if (portadaUrl.StartsWith("//")) portadaUrl = "https:" + portadaUrl;
+
+                        // 4. EXTRAER PRECIO
+                        var precioNode = product.SelectSingleNode(".//*[contains(@class, 'js-price-display')]") ?? product.SelectSingleNode(".//*[contains(@class, 'item-price')]");
+                        var precioLimpio = precioNode?.InnerText?.Replace("\n", "")?.Trim() ?? "";
+
+                        if (tituloLimpio != "Sin título" && !string.IsNullOrEmpty(tituloLimpio))
+                        {
+                            listaResultados.Add(new {
+                                titulo = tituloLimpio, 
+                                autor = autorOriginal,
+                                portadaUrl = portadaUrl,
+                                resumen = $"Precio (Yenny): {precioLimpio}", 
+                                fuente = "Yenny", 
+                                linkComercial = linkComercial
+                            });
+                        }
+                    }
+                }
+                else
+                {
+                    // === MOTOR CÚSPIDE (Se mantiene igual) ===
+                    var url = $"https://cuspide.com/?s={WebUtility.UrlEncode(titulo)}&post_type=product";
+                    var response = await client.GetAsync(url);
+                    var doc = new HtmlDocument();
+                    doc.LoadHtml(await response.Content.ReadAsStringAsync());
+                    var productosNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-small col')]");
+
+                    if (productosNodes != null)
+                    {
+                        foreach (var product in productosNodes.Take(5))
+                        {
+                            var tNode = product.SelectSingleNode(".//p[contains(@class, 'product-title')]/a");
+                            var tituloLimpio = tNode?.InnerText?.Trim() ?? "Sin título";
+                            var linkComercial = tNode?.GetAttributeValue("href", "") ?? "";
+                            var autorLimpio = product.SelectSingleNode(".//p[contains(@class, 'author-product-loop')]/a")?.InnerText?.Trim() ?? "Carga Manual";
+                            var portadaUrl = product.SelectSingleNode(".//img[contains(@class, 'attachment-woocommerce_thumbnail')]")?.GetAttributeValue("src", "") ?? "";
+                            var precioLimpio = product.SelectSingleNode(".//span[contains(@class, 'woocommerce-Price-amount')]")?.InnerText?.Replace("&#36;", "$").Replace("&nbsp;", " ").Trim() ?? "";
+
+                            if (tituloLimpio != "Sin título")
+                                listaResultados.Add(new { titulo = tituloLimpio, autor = autorLimpio, portadaUrl = portadaUrl, resumen = $"Precio (Cúspide): {precioLimpio}", fuente = "Cúspide", linkComercial = linkComercial });
+                        }
+                    }
+                }
+                return Ok(listaResultados);
+            }
+            catch (Exception ex) { return StatusCode(500, new { mensaje = $"Error técnico: {ex.Message}" }); }
+        }
+
+        [HttpGet("scraper/detalle")]
+        public async Task<ActionResult> ObtenerDetalleLibro([FromQuery] string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return BadRequest(new { mensaje = "URL inválida." });
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+            try
+            {
+                var response = await client.GetAsync(url);
+                var htmlCrudo = await response.Content.ReadAsStringAsync();
+                var doc = new HtmlDocument();
+                doc.LoadHtml(htmlCrudo);
+
+                var tituloFinal = ""; var subtituloFinal = ""; var resumenLargo = "";
+                var editorial = ""; var paginas = ""; var isbn = ""; var anio = ""; var autorDeducido = "";
+
+                if (url.Contains("yenny-elateneo"))
+                {
+                    // 1. TÍTULO
+                    var h1Node = doc.DocumentNode.SelectSingleNode("//h1[contains(@data-store, 'product-name')]") ?? doc.DocumentNode.SelectSingleNode("//h1");
+                    tituloFinal = WebUtility.HtmlDecode(h1Node?.InnerText?.Trim() ?? "");
+
+                    // 1.5 LÓGICA DE AUTOR (Corregida para traer solo el texto)
+                    var autorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@class, 'js-product-brand')]") 
+                         ?? doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'product-buy-container')]//a");
+            
+            if (autorNode != null) {
+                var nombreAutor = WebUtility.HtmlDecode(autorNode.InnerText.Trim());
+                // Invertimos si es necesario
+                if (nombreAutor.Contains(" ") && !nombreAutor.Contains(",")) {
+                    var partes = nombreAutor.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    autorDeducido = $"{partes.Last()}, {string.Join(" ", partes.Take(partes.Length - 1))}";
+                } else {
+                    autorDeducido = nombreAutor;
+                }
+
+                        // OPCIONAL: Invertimos el nombre para que el Cutter funcione (Ej: J.K. Rowling -> Rowling, J.K.)
+                        if (autorDeducido.Contains(" ")) {
+                            var partes = autorDeducido.Split(' ');
+                            var apellido = partes.Last();
+                            var nombres = string.Join(" ", partes.Take(partes.Length - 1));
+                            nombreAutor = autorDeducido = $"{apellido}, {nombres}";
+                        }
+                        if (string.IsNullOrEmpty(autorDeducido) && !string.IsNullOrEmpty(nombreAutor))
+        {
+            autorDeducido = nombreAutor; // Si no pudimos invertir, al menos dejamos el nombre original
+        }
+                    }
+
+                    // 2. RESUMEN Y DATOS TÉCNICOS (Yenny mezcla todo)
+                    var resumenNode = doc.DocumentNode.SelectSingleNode("//div[@id='product-description']") 
+                                   ?? doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'user-content')]");
+                    
+                    // Decodificamos el HTML para que "&iacute;" pase a ser "í"
+                    var textoLimpio = WebUtility.HtmlDecode(resumenNode?.InnerText ?? "");
+                    resumenLargo = textoLimpio;
+
+                    // 3. ESCÁNER DE LÍNEAS (Busca patrones en el texto)
+                    
+            var lineas = textoLimpio.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var linea in lineas)
+            {
+        var l = linea.Trim();
+        var lBaja = l.ToLower();
+
+        // EDITORIAL: Tomamos lo que sigue a "Editorial:" pero cortamos si aparecen otras palabras clave
+        if (lBaja.Contains("editorial:") || lBaja.Contains("sello:")) 
+        {
+            string rawEd = l.Substring(l.IndexOf(":") + 1).Trim();
+            // Si la línea es muy larga (como en tu foto), cortamos en palabras comunes que Yenny pega
+            string[] frenos = { "encuadernación", "idioma", "isbn", "n°", "dimensiones", "sinopsis", "sinópsis" };
+            foreach (var freno in frenos) {
+                if (rawEd.ToLower().Contains(freno)) 
+                    rawEd = rawEd.Substring(0, rawEd.ToLower().IndexOf(freno)).Trim();
+            }
+            editorial = rawEd;
+        }
+        
+        // PÁGINAS: Buscamos "páginas" o "n°" y extraemos solo los números de esa línea
+        if (lBaja.Contains("página") || lBaja.Contains("pagina") || lBaja.Contains("n°")) 
+        {
+            var soloNum = System.Text.RegularExpressions.Regex.Replace(l, "[^0-9]", "");
+            if (soloNum.Length > 0 && soloNum.Length < 5) paginas = soloNum;
+        }
+
+        if (lBaja.Contains("isbn:")) {
+            var match = System.Text.RegularExpressions.Regex.Match(l, @"\d{10,13}");
+            if (match.Success) isbn = match.Value;
+        }
+
+        if (lBaja.Contains("publicación") || lBaja.Contains("edición")) {
+            var matchAnio = System.Text.RegularExpressions.Regex.Match(l, @"(19|20)\d{2}");
+            if (matchAnio.Success) anio = matchAnio.Value;
+        }
+    
+                    }
+
+                    // Limpieza final de la Sinopsis: le sacamos el bloque de datos técnicos del principio
+                    if (resumenLargo.Contains("Sinopsis")) {
+                        resumenLargo = resumenLargo.Substring(resumenLargo.IndexOf("Sinopsis") + 8).Trim();
+                    } else if (resumenLargo.Contains("Sinópsis")) {
+                         resumenLargo = resumenLargo.Substring(resumenLargo.IndexOf("Sinópsis") + 8).Trim();
+                    }
+                //     if (autorDeducido == "Carga Manual" && !string.IsNullOrEmpty(autorDeducido)) {
+                //         //autorDeducido = invertirNombreComercial(autorDeducido); // Lo invertimos para el Cutter
+                // }
+                }
+
+                return Ok(new { 
+                    tituloLimpio = tituloFinal, 
+                    subtitulo = subtituloFinal, 
+                    resumen = resumenLargo, 
+                    editorial = editorial, 
+                    paginas = paginas, 
+                    isbn = isbn, 
+                    anio = anio, 
+                    autor = autorDeducido 
+                });
+            }
+            catch (Exception ex) { return StatusCode(500, new { mensaje = ex.Message }); }
+        }
 
         // GET: api/libros/autores/buscar?q=bor
         [HttpGet("autores/buscar")]
@@ -626,6 +859,95 @@ namespace Backend.Controllers
 
             return Ok(new { mensaje = "¡15 libros cargados! Tenés inventario, tags combinados y ejemplares físicos listos." });
         }
+
+        [HttpGet("publico/buscar")]
+public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "", [FromQuery] int pagina = 1, [FromQuery] int cantidad = 12)
+{
+    try
+    {
+        var consulta = _context.Libros.Include(l => l.Tags).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.ToLower().Trim();
+            
+            // Definimos nuestras categorías "Madre"
+            string[] categoriasPrincipales = { "ciencia", "ficción", "terror", "historia", "infantil", "aventura", "ciencia ficción" };
+
+            if (categoriasPrincipales.Contains(q)) 
+            {
+                // Si buscamos "Ciencia", queremos SOLO "Ciencia". 
+                // Pero si buscamos "Ciencia Ficción", queremos el tag exacto.
+                consulta = consulta.Where(l => l.Tags.Any(t => t.Nombre.ToLower().Trim() == q));
+            } 
+            else 
+            {
+                // Búsqueda libre por texto (Título o Autor)
+                consulta = consulta.Where(l => 
+                    l.Titulo.ToLower().Contains(q) || 
+                    l.AutorPrincipal.ToLower().Contains(q)
+                );
+            }
+        }
+
+        var totalLibros = await consulta.CountAsync();
+        var libros = await consulta
+            .OrderByDescending(l => l.Id)
+            .Skip((pagina - 1) * cantidad)
+            .Take(cantidad)
+            .Select(l => new {
+                l.Id, l.Titulo, l.AutorPrincipal, l.PortadaUrl, l.ReseniaSinopsis,
+                l.Editorial, l.AnioPublicacion,
+                EstaDisponible = l.Ejemplares.Any(e => e.DisponibleParaPrestamo)
+            })
+            .ToListAsync();
+
+        return Ok(new {
+            total = totalLibros,
+            paginaActual = pagina,
+            totalPaginas = (int)Math.Ceiling((double)totalLibros / cantidad),
+            libros = libros
+        });
+    }
+    catch (Exception ex) { return StatusCode(500, new { mensaje = ex.Message }); }
+}
+
+        [HttpGet("publico/{id}")]
+        public async Task<ActionResult> ObtenerDetalleLibroPublico(int id)
+        {
+            var libro = await _context.Libros
+                .Include(l => l.Tags)
+                .Include(l => l.Ejemplares)
+                .FirstOrDefaultAsync(l => l.Id == id);
+
+            if (libro == null) return NotFound(new { mensaje = "Libro no encontrado." });
+
+            return Ok(new {
+                libro.Id,
+                libro.Titulo,
+                libro.Subtitulo,
+                libro.AutorPrincipal,
+                libro.Editorial,
+                libro.AnioPublicacion,
+                libro.Isbn,
+                libro.Clasificacion,
+                libro.CodigoCutter,
+                libro.ReseniaSinopsis,
+                libro.CantidadPaginas,
+                libro.PortadaUrl,
+                Tags = libro.Tags.Select(t => t.Nombre).ToList(),
+                Ejemplares = libro.Ejemplares.Select(e => new {
+                    e.Id,
+                    e.NumeroInventario,
+                    e.Observaciones,
+                    e.DisponibleParaPrestamo
+                }).ToList()
+            });
+
+
+
+
+
     }
 
     // --- AGREGAR ESTAS DOS CLASES AL FINAL DEL ARCHIVO ---
@@ -701,4 +1023,5 @@ namespace Backend.Controllers
     }
 
     
+}
 }

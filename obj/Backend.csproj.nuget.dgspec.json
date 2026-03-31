@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj": {}
+    "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj": {}
   },
   "projects": {
-    "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj": {
+    "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj",
+        "projectUniqueName": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj",
         "projectName": "Backend",
-        "projectPath": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj",
+        "projectPath": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj",
         "packagesPath": "C:\\Users\\Ivan\\.nuget\\packages\\",
-        "outputPath": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\obj\\",
+        "outputPath": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\NuGet.Config",
+          "I:\\Repos VS Code\\GestionBiblioteca\\backend\\NuGet.Config",
           "C:\\Users\\Ivan\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
@@ -46,6 +46,10 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "HtmlAgilityPack": {
+              "target": "Package",
+              "version": "[1.12.4, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[8.0.17, )"
