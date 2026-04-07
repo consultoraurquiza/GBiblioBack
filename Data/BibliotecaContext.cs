@@ -19,6 +19,7 @@ namespace Backend.Data
         public DbSet<Material> Materiales { get; set; }
         public DbSet<PrestamoMaterial> PrestamosMateriales { get; set; }
         public DbSet<TerminoUnesco> TesauroUnesco { get; set; }
+        public DbSet<Configuracion> Configuracion { get; set; }
 
         // Opcional: Acá podés agregar reglas estrictas de creación si querés
         protected override void OnModelCreating(ModelBuilder modelBuilder)
