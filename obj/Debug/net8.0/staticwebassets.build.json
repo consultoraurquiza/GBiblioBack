@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "YBX3ovAhuOU8asmF/EoolyXmPS6kW+iCpIW4R5CqH18=",
+  "Hash": "3YlQoY1P+Gj3FA5y6AeYX0V7/76cVjHt55lm9Ct2wqI=",
   "Source": "Backend",
   "BasePath": "_content/Backend",
   "Mode": "Default",
@@ -10,17 +10,17 @@
     {
       "Name": "Backend\\wwwroot",
       "Source": "Backend",
-      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\wwwroot\\",
+      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\",
       "BasePath": "_content/Backend",
       "Pattern": "**"
     }
   ],
   "Assets": [
     {
-      "Identity": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\wwwroot\\portadas\\libro_18_google.jpg",
+      "Identity": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\portadas\\libro_18_google.jpg",
       "SourceId": "Backend",
       "SourceType": "Discovered",
-      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\wwwroot\\",
+      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\",
       "BasePath": "_content/Backend",
       "RelativePath": "portadas/libro_18_google.jpg",
       "AssetKind": "All",
@@ -36,10 +36,10 @@
       "OriginalItemSpec": "wwwroot\\portadas\\libro_18_google.jpg"
     },
     {
-      "Identity": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\wwwroot\\portadas\\libro_19_google.jpg",
+      "Identity": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\portadas\\libro_19_google.jpg",
       "SourceId": "Backend",
       "SourceType": "Discovered",
-      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\wwwroot\\",
+      "ContentRoot": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\wwwroot\\",
       "BasePath": "_content/Backend",
       "RelativePath": "portadas/libro_19_google.jpg",
       "AssetKind": "All",

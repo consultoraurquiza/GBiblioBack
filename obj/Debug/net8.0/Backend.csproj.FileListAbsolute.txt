@@ -109,3 +109,12 @@ I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\cutter.json
 I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Backend.staticwebassets.runtime.json
 I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Data\tesauro.ttl
 I:\Repos VS Code\GestionBiblioteca\backend\bin\Debug\net8.0\HtmlAgilityPack.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\BCrypt.Net-Next.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+I:\Repos VS Code\GestionBiblioteca\Backend\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll

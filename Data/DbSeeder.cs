@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 using Backend.Models; // ¡Cambiá esto por tu namespace!
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Backend.Data
 {
@@ -58,6 +60,24 @@ namespace Backend.Data
                 await context.TesauroUnesco.AddRangeAsync(terminosParaGuardar);
                 await context.SaveChangesAsync();
                 Console.WriteLine($"✅ [SEEDER] ¡Éxito brutal! Se inyectaron {terminosParaGuardar.Count} términos normalizados en la base de datos.");
+            }
+        }
+        public static async Task Inicializar(BibliotecaContext context)
+        {
+            // ... (acá seguro tenés lo que ya venías "seedeando", como la Configuración) ...
+
+            // SEEDER DE ADMINISTRADOR POR DEFECTO
+            if (!context.Administradores.Any())
+            {
+                var adminPorDefecto = new Admin
+                {
+                    NombreUsuario = "admin",
+                    // Encriptamos la contraseña "admin123" antes de guardarla
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123") 
+                };
+
+                context.Administradores.Add(adminPorDefecto);
+                await context.SaveChangesAsync();
             }
         }
     }

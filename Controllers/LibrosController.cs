@@ -22,7 +22,7 @@ namespace Backend.Controllers
             _context = context;
             _imagenService = imagenService;
         }
-        
+
 
         // GET: api/libros
         [HttpGet]
@@ -33,6 +33,43 @@ namespace Backend.Controllers
                 .Include(l => l.Ejemplares)
                 .Include(l => l.Tags)
                 .ToListAsync();
+        }
+        [HttpGet("paginado")]
+        public async Task<IActionResult> GetLibrosPaginados([FromQuery] string? buscar, [FromQuery] int pagina = 1, [FromQuery] int limite = 21)
+        {
+            // 1. IMPORTANTE: Agregamos el Include para que traiga las copias físicas
+            var query = _context.Libros
+                .Include(l => l.Ejemplares)
+                .Include(l => l.Tags)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(buscar))
+            {
+                buscar = buscar.ToLower();
+                query = query.Where(l =>
+                    (l.Titulo != null && l.Titulo.ToLower().Contains(buscar)) ||
+                    (l.AutorPrincipal != null && l.AutorPrincipal.ToLower().Contains(buscar)) ||
+                    (l.Isbn != null && l.Isbn.Contains(buscar))
+                );
+            }
+
+            int totalItems = await query.CountAsync();
+            int totalPaginas = (int)Math.Ceiling(totalItems / (double)limite);
+
+            var libros = await query
+                .OrderByDescending(l => l.Id)
+                .Skip((pagina - 1) * limite)
+                .Take(limite)
+                .ToListAsync();
+
+            // 2. IMPORTANTE: Aseguramos que los nombres coincidan exactamente con Next.js
+            return Ok(new
+            {
+                libros = libros,
+                totalItems = totalItems,
+                totalPaginas = totalPaginas,
+                paginaActual = pagina
+            });
         }
 
         // GET: api/libros/5
@@ -55,7 +92,7 @@ namespace Backend.Controllers
         {
             // 1. Rompemos la frase en palabras (ej: "Ficción Adulto" -> ["ficción", "adulto"])
             var terminos = texto.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            
+
             // 2. Preparamos la consulta base
             var query = _context.Libros
                 .Include(l => l.Ejemplares)
@@ -66,16 +103,16 @@ namespace Backend.Controllers
             // Al encadenar los "Where", Entity Framework aplica automáticamente un "AND"
             foreach (var termino in terminos)
             {
-                query = query.Where(l => 
-                    l.Titulo.ToLower().Contains(termino) || 
+                query = query.Where(l =>
+                    l.Titulo.ToLower().Contains(termino) ||
                     l.AutorPrincipal.ToLower().Contains(termino) ||
                     (l.Isbn != null && l.Isbn.ToLower().Contains(termino)) ||
                     (l.Clasificacion != null && l.Clasificacion.ToLower().Contains(termino)) ||
                     (l.CodigoCutter != null && l.CodigoCutter.ToLower().Contains(termino)) ||
-                    
+
                     // Busca adentro de los tags
                     l.Tags.Any(t => t.Nombre.ToLower().Contains(termino)) ||
-                    
+
                     // Busca el número de inventario
                     l.Ejemplares.Any(e => e.NumeroInventario.ToLower() == termino)
                 );
@@ -91,8 +128,8 @@ namespace Backend.Controllers
 
             return Ok(libros);
         }
-        
-       // POST: api/libros
+
+        // POST: api/libros
         [HttpPost]
         public async Task<ActionResult<Libro>> PostLibro([FromForm] LibroCreacionDTO dto) // <--- OJO ACÁ: [FromForm]
         {
@@ -115,8 +152,8 @@ namespace Backend.Controllers
             // 1. Armar los ejemplares
             foreach (var ej in dto.Ejemplares)
             {
-                nuevoLibro.Ejemplares.Add(new Ejemplar 
-                { 
+                nuevoLibro.Ejemplares.Add(new Ejemplar
+                {
                     NumeroInventario = ej.NumeroInventario,
                     Observaciones = ej.Observaciones,
                     DisponibleParaPrestamo = true
@@ -128,7 +165,7 @@ namespace Backend.Controllers
             {
                 var tagLimpio = nombreTag.Trim();
                 var tagExistente = await _context.Tags.FirstOrDefaultAsync(t => t.Nombre.ToLower() == tagLimpio.ToLower());
-                
+
                 if (tagExistente != null) nuevoLibro.Tags.Add(tagExistente);
                 else nuevoLibro.Tags.Add(new Tag { Nombre = tagLimpio });
             }
@@ -205,7 +242,7 @@ namespace Backend.Controllers
             else
             {
                 // Si destildó la caja, "olvidamos" la foto local y volvemos a usar el link de internet
-                libro.PortadaLocalUrl = null; 
+                libro.PortadaLocalUrl = null;
             }
 
             // 3. Actualizar Tags
@@ -214,7 +251,7 @@ namespace Backend.Controllers
             {
                 var tagLimpio = nombreTag.Trim();
                 var tagExistente = await _context.Tags.FirstOrDefaultAsync(t => t.Nombre.ToLower() == tagLimpio.ToLower());
-                
+
                 if (tagExistente != null) libro.Tags.Add(tagExistente);
                 else libro.Tags.Add(new Tag { Nombre = tagLimpio });
             }
@@ -226,7 +263,7 @@ namespace Backend.Controllers
 
             foreach (var ejDto in dto.Ejemplares)
             {
-                if (ejDto.Id.HasValue) 
+                if (ejDto.Id.HasValue)
                 {
                     var ejExistente = libro.Ejemplares.FirstOrDefault(e => e.Id == ejDto.Id.Value);
                     if (ejExistente != null)
@@ -236,10 +273,10 @@ namespace Backend.Controllers
                         ejExistente.DisponibleParaPrestamo = ejDto.DisponibleParaPrestamo;
                     }
                 }
-                else 
+                else
                 {
-                    libro.Ejemplares.Add(new Ejemplar 
-                    { 
+                    libro.Ejemplares.Add(new Ejemplar
+                    {
                         NumeroInventario = ejDto.NumeroInventario,
                         Observaciones = ejDto.Observaciones,
                         DisponibleParaPrestamo = ejDto.DisponibleParaPrestamo
@@ -258,7 +295,8 @@ namespace Backend.Controllers
             var inventario = await _context.Ejemplares
                 .Include(e => e.Libro)
                 .OrderBy(e => e.NumeroInventario)
-                .Select(e => new {
+                .Select(e => new
+                {
                     Id = e.Id,
                     NumeroInventario = e.NumeroInventario,
                     Observaciones = e.Observaciones,
@@ -283,17 +321,17 @@ namespace Backend.Controllers
         {
             if (string.IsNullOrWhiteSpace(autor)) return BadRequest();
 
-            try 
+            try
             {
                 // 1. Leemos el archivo JSON físico
                 var rutaJson = Path.Combine(Directory.GetCurrentDirectory(), "cutter.json");
                 var json = System.IO.File.ReadAllText(rutaJson);
                 var tablaCutter = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(json);
-                
+
                 // 2. Limpiamos el autor (si escriben "Borges, Jorge", nos quedamos con "borges")
                 var apellido = autor.Split(',')[0].Trim().ToLower();
                 string numeroAsignado = "111"; // Número base por defecto
-                
+
                 // 3. El algoritmo Cutter real: Buscar el prefijo más cercano alfabéticamente
                 var tablaOrdenada = tablaCutter.OrderBy(x => x.Key.ToLower()).ToList();
 
@@ -308,7 +346,7 @@ namespace Backend.Controllers
 
                 // 4. El formato final es: Primera Letra (Mayúscula) + El número encontrado
                 var resultado = char.ToUpper(apellido[0]) + numeroAsignado;
-                
+
                 return Ok(new { cutter = resultado });
             }
             catch (Exception ex)
@@ -362,9 +400,9 @@ namespace Backend.Controllers
         {
             using var httpClient = new HttpClient();
             // Acá podés sumar tu &key=TU_API_KEY para evitar el error 429
-            var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"; 
+            var url = $"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}";
             var response = await httpClient.GetAsync(url);
-            
+
             if (!response.IsSuccessStatusCode) return null;
 
             var jsonString = await response.Content.ReadAsStringAsync();
@@ -399,7 +437,7 @@ namespace Backend.Controllers
             using var httpClient = new HttpClient();
             var url = $"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data";
             var response = await httpClient.GetAsync(url);
-            
+
             if (!response.IsSuccessStatusCode) return null;
 
             var jsonString = await response.Content.ReadAsStringAsync();
@@ -426,12 +464,12 @@ namespace Backend.Controllers
                 resultado.PortadaUrl = cover.TryGetProperty("medium", out var m) ? m.GetString()! : "";
 
             if (bookData.TryGetProperty("subjects", out var subjects) && subjects.ValueKind == JsonValueKind.Array)
-                foreach (var sub in subjects.EnumerateArray()) 
+                foreach (var sub in subjects.EnumerateArray())
                     resultado.Categorias.Add(sub.TryGetProperty("name", out var sn) ? sn.GetString()! : "");
 
             return resultado;
         }
-// Buscador Scrapper para BuscaLibre (¡OJO! Usar solo si las APIs oficiales no te dan resultado, y tené cuidado con los bloqueos por parte del sitio)
+        // Buscador Scrapper para BuscaLibre (¡OJO! Usar solo si las APIs oficiales no te dan resultado, y tené cuidado con los bloqueos por parte del sitio)
 
         // --- EL NUEVO MOTOR DE BÚSQUEDA POR TÍTULO ---
         // Se llama así: GET /api/libros/search-by-title?titulo=matematicas 3
@@ -458,7 +496,7 @@ namespace Backend.Controllers
                     doc.LoadHtml(html);
 
                     // Buscamos las cajas de TiendaNube
-                    var productosNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'js-item-product')]") 
+                    var productosNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'js-item-product')]")
                                       ?? doc.DocumentNode.SelectNodes("//div[contains(@class, 'item-product')]");
 
                     if (productosNodes == null || productosNodes.Count == 0)
@@ -471,24 +509,24 @@ namespace Backend.Controllers
                         var linkComercial = linkNode?.GetAttributeValue("href", "") ?? "";
                         if (linkComercial.StartsWith("/")) linkComercial = "https://www.yenny-elateneo.com" + linkComercial;
 
-                        var autorNode = product.SelectSingleNode(".//p[contains(@class, 'text-accent')]") 
+                        var autorNode = product.SelectSingleNode(".//p[contains(@class, 'text-accent')]")
                         ?? product.SelectSingleNode(".//*[contains(@class, 'item-brand')]");
                         var autorOriginal = WebUtility.HtmlDecode(autorNode?.InnerText?.Trim() ?? "Autor Desconocido");
 
                         // 2. EXTRAER TÍTULO (Buscamos en el texto, si falla buscamos en el atributo title, si falla en el alt de la imagen)
                         var tituloNode = product.SelectSingleNode(".//*[contains(@class, 'item-name')]") ?? product.SelectSingleNode(".//*[@data-store='product-item-name']");
                         var tituloLimpio = tituloNode?.InnerText?.Trim();
-                        
+
                         if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = linkNode?.GetAttributeValue("title", "")?.Trim();
                         if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = product.SelectSingleNode(".//img")?.GetAttributeValue("alt", "")?.Trim();
                         if (string.IsNullOrEmpty(tituloLimpio)) tituloLimpio = "Sin título";
 
                         // 3. EXTRAER IMAGEN (TiendaNube usa data-srcset para esconderla)
                         var imgNode = product.SelectSingleNode(".//img");
-                        var portadaUrl = imgNode?.GetAttributeValue("data-srcset", "") ?? 
-                                         imgNode?.GetAttributeValue("data-src", "") ?? 
+                        var portadaUrl = imgNode?.GetAttributeValue("data-srcset", "") ??
+                                         imgNode?.GetAttributeValue("data-src", "") ??
                                          imgNode?.GetAttributeValue("src", "") ?? "";
-                        
+
                         // Si trae un srcset gigante (ej: "foto.jpg 300w, foto2.jpg 600w"), nos quedamos con la primera
                         if (portadaUrl.Contains(" ")) portadaUrl = portadaUrl.Split(' ')[0];
                         if (portadaUrl.StartsWith("//")) portadaUrl = "https:" + portadaUrl;
@@ -499,12 +537,13 @@ namespace Backend.Controllers
 
                         if (tituloLimpio != "Sin título" && !string.IsNullOrEmpty(tituloLimpio))
                         {
-                            listaResultados.Add(new {
-                                titulo = tituloLimpio, 
+                            listaResultados.Add(new
+                            {
+                                titulo = tituloLimpio,
                                 autor = autorOriginal,
                                 portadaUrl = portadaUrl,
-                                resumen = $"Precio (Yenny): {precioLimpio}", 
-                                fuente = "Yenny", 
+                                resumen = $"Precio (Yenny): {precioLimpio}",
+                                fuente = "Yenny",
                                 linkComercial = linkComercial
                             });
                         }
@@ -564,100 +603,112 @@ namespace Backend.Controllers
                     tituloFinal = WebUtility.HtmlDecode(h1Node?.InnerText?.Trim() ?? "");
 
                     // 1.5 LÓGICA DE AUTOR (Corregida para traer solo el texto)
-                    var autorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@class, 'js-product-brand')]") 
+                    var autorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@class, 'js-product-brand')]")
                          ?? doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'product-buy-container')]//a");
-            
-            if (autorNode != null) {
-                var nombreAutor = WebUtility.HtmlDecode(autorNode.InnerText.Trim());
-                // Invertimos si es necesario
-                if (nombreAutor.Contains(" ") && !nombreAutor.Contains(",")) {
-                    var partes = nombreAutor.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    autorDeducido = $"{partes.Last()}, {string.Join(" ", partes.Take(partes.Length - 1))}";
-                } else {
-                    autorDeducido = nombreAutor;
-                }
+
+                    if (autorNode != null)
+                    {
+                        var nombreAutor = WebUtility.HtmlDecode(autorNode.InnerText.Trim());
+                        // Invertimos si es necesario
+                        if (nombreAutor.Contains(" ") && !nombreAutor.Contains(","))
+                        {
+                            var partes = nombreAutor.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            autorDeducido = $"{partes.Last()}, {string.Join(" ", partes.Take(partes.Length - 1))}";
+                        }
+                        else
+                        {
+                            autorDeducido = nombreAutor;
+                        }
 
                         // OPCIONAL: Invertimos el nombre para que el Cutter funcione (Ej: J.K. Rowling -> Rowling, J.K.)
-                        if (autorDeducido.Contains(" ")) {
+                        if (autorDeducido.Contains(" "))
+                        {
                             var partes = autorDeducido.Split(' ');
                             var apellido = partes.Last();
                             var nombres = string.Join(" ", partes.Take(partes.Length - 1));
                             nombreAutor = autorDeducido = $"{apellido}, {nombres}";
                         }
                         if (string.IsNullOrEmpty(autorDeducido) && !string.IsNullOrEmpty(nombreAutor))
-        {
-            autorDeducido = nombreAutor; // Si no pudimos invertir, al menos dejamos el nombre original
-        }
+                        {
+                            autorDeducido = nombreAutor; // Si no pudimos invertir, al menos dejamos el nombre original
+                        }
                     }
 
                     // 2. RESUMEN Y DATOS TÉCNICOS (Yenny mezcla todo)
-                    var resumenNode = doc.DocumentNode.SelectSingleNode("//div[@id='product-description']") 
+                    var resumenNode = doc.DocumentNode.SelectSingleNode("//div[@id='product-description']")
                                    ?? doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'user-content')]");
-                    
+
                     // Decodificamos el HTML para que "&iacute;" pase a ser "í"
                     var textoLimpio = WebUtility.HtmlDecode(resumenNode?.InnerText ?? "");
                     resumenLargo = textoLimpio;
 
                     // 3. ESCÁNER DE LÍNEAS (Busca patrones en el texto)
-                    
-            var lineas = textoLimpio.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var linea in lineas)
-            {
-        var l = linea.Trim();
-        var lBaja = l.ToLower();
 
-        // EDITORIAL: Tomamos lo que sigue a "Editorial:" pero cortamos si aparecen otras palabras clave
-        if (lBaja.Contains("editorial:") || lBaja.Contains("sello:")) 
-        {
-            string rawEd = l.Substring(l.IndexOf(":") + 1).Trim();
-            // Si la línea es muy larga (como en tu foto), cortamos en palabras comunes que Yenny pega
-            string[] frenos = { "encuadernación", "idioma", "isbn", "n°", "dimensiones", "sinopsis", "sinópsis" };
-            foreach (var freno in frenos) {
-                if (rawEd.ToLower().Contains(freno)) 
-                    rawEd = rawEd.Substring(0, rawEd.ToLower().IndexOf(freno)).Trim();
-            }
-            editorial = rawEd;
-        }
-        
-        // PÁGINAS: Buscamos "páginas" o "n°" y extraemos solo los números de esa línea
-        if (lBaja.Contains("página") || lBaja.Contains("pagina") || lBaja.Contains("n°")) 
-        {
-            var soloNum = System.Text.RegularExpressions.Regex.Replace(l, "[^0-9]", "");
-            if (soloNum.Length > 0 && soloNum.Length < 5) paginas = soloNum;
-        }
+                    var lineas = textoLimpio.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var linea in lineas)
+                    {
+                        var l = linea.Trim();
+                        var lBaja = l.ToLower();
 
-        if (lBaja.Contains("isbn:")) {
-            var match = System.Text.RegularExpressions.Regex.Match(l, @"\d{10,13}");
-            if (match.Success) isbn = match.Value;
-        }
+                        // EDITORIAL: Tomamos lo que sigue a "Editorial:" pero cortamos si aparecen otras palabras clave
+                        if (lBaja.Contains("editorial:") || lBaja.Contains("sello:"))
+                        {
+                            string rawEd = l.Substring(l.IndexOf(":") + 1).Trim();
+                            // Si la línea es muy larga (como en tu foto), cortamos en palabras comunes que Yenny pega
+                            string[] frenos = { "encuadernación", "idioma", "isbn", "n°", "dimensiones", "sinopsis", "sinópsis" };
+                            foreach (var freno in frenos)
+                            {
+                                if (rawEd.ToLower().Contains(freno))
+                                    rawEd = rawEd.Substring(0, rawEd.ToLower().IndexOf(freno)).Trim();
+                            }
+                            editorial = rawEd;
+                        }
 
-        if (lBaja.Contains("publicación") || lBaja.Contains("edición")) {
-            var matchAnio = System.Text.RegularExpressions.Regex.Match(l, @"(19|20)\d{2}");
-            if (matchAnio.Success) anio = matchAnio.Value;
-        }
-    
+                        // PÁGINAS: Buscamos "páginas" o "n°" y extraemos solo los números de esa línea
+                        if (lBaja.Contains("página") || lBaja.Contains("pagina") || lBaja.Contains("n°"))
+                        {
+                            var soloNum = System.Text.RegularExpressions.Regex.Replace(l, "[^0-9]", "");
+                            if (soloNum.Length > 0 && soloNum.Length < 5) paginas = soloNum;
+                        }
+
+                        if (lBaja.Contains("isbn:"))
+                        {
+                            var match = System.Text.RegularExpressions.Regex.Match(l, @"\d{10,13}");
+                            if (match.Success) isbn = match.Value;
+                        }
+
+                        if (lBaja.Contains("publicación") || lBaja.Contains("edición"))
+                        {
+                            var matchAnio = System.Text.RegularExpressions.Regex.Match(l, @"(19|20)\d{2}");
+                            if (matchAnio.Success) anio = matchAnio.Value;
+                        }
+
                     }
 
                     // Limpieza final de la Sinopsis: le sacamos el bloque de datos técnicos del principio
-                    if (resumenLargo.Contains("Sinopsis")) {
+                    if (resumenLargo.Contains("Sinopsis"))
+                    {
                         resumenLargo = resumenLargo.Substring(resumenLargo.IndexOf("Sinopsis") + 8).Trim();
-                    } else if (resumenLargo.Contains("Sinópsis")) {
-                         resumenLargo = resumenLargo.Substring(resumenLargo.IndexOf("Sinópsis") + 8).Trim();
                     }
-                //     if (autorDeducido == "Carga Manual" && !string.IsNullOrEmpty(autorDeducido)) {
-                //         //autorDeducido = invertirNombreComercial(autorDeducido); // Lo invertimos para el Cutter
-                // }
+                    else if (resumenLargo.Contains("Sinópsis"))
+                    {
+                        resumenLargo = resumenLargo.Substring(resumenLargo.IndexOf("Sinópsis") + 8).Trim();
+                    }
+                    //     if (autorDeducido == "Carga Manual" && !string.IsNullOrEmpty(autorDeducido)) {
+                    //         //autorDeducido = invertirNombreComercial(autorDeducido); // Lo invertimos para el Cutter
+                    // }
                 }
 
-                return Ok(new { 
-                    tituloLimpio = tituloFinal, 
-                    subtitulo = subtituloFinal, 
-                    resumen = resumenLargo, 
-                    editorial = editorial, 
-                    paginas = paginas, 
-                    isbn = isbn, 
-                    anio = anio, 
-                    autor = autorDeducido 
+                return Ok(new
+                {
+                    tituloLimpio = tituloFinal,
+                    subtitulo = subtituloFinal,
+                    resumen = resumenLargo,
+                    editorial = editorial,
+                    paginas = paginas,
+                    isbn = isbn,
+                    anio = anio,
+                    autor = autorDeducido
                 });
             }
             catch (Exception ex) { return StatusCode(500, new { mensaje = ex.Message }); }
@@ -669,14 +720,14 @@ namespace Backend.Controllers
         {
             // Solo buscamos si el usuario tipeó al menos 2 letras
             if (string.IsNullOrWhiteSpace(q) || q.Length < 2) return Ok(new List<string>());
-            
+
             var autores = await _context.Libros
                 .Where(l => l.AutorPrincipal.ToLower().Contains(q.ToLower()))
                 .Select(l => l.AutorPrincipal)
                 .Distinct() // Para no devolver 20 veces a "Borges" si tiene 20 libros
                 .Take(10)   // Solo los primeros 10 para que el menú no sea infinito
                 .ToListAsync();
-                
+
             return Ok(autores);
         }
 
@@ -685,7 +736,7 @@ namespace Backend.Controllers
         {
             // Pide 2 letras mínimo para no saturar la base de datos
             if (string.IsNullOrWhiteSpace(q) || q.Length < 2) return Ok(new List<string>());
-            
+
             // AHORA BUSCAMOS EN EL TESAURO OFICIAL, NO EN LOS TAGS SUCIOS
             var tags = await _context.TesauroUnesco
                 .Where(t => t.Termino.ToLower().Contains(q.ToLower()))
@@ -693,21 +744,21 @@ namespace Backend.Controllers
                 .Select(t => t.Termino)
                 .Take(10)
                 .ToListAsync();
-                
+
             return Ok(tags);
         }
 
-        
+
 
         // GET: api/libros/cutter-table
         [HttpGet("cutter-table")]
         public IActionResult GetTablaCutterCompleta()
         {
-            try 
+            try
             {
                 var rutaJson = Path.Combine(Directory.GetCurrentDirectory(), "cutter.json");
                 if (!System.IO.File.Exists(rutaJson)) return NotFound(new { mensaje = "Archivo cutter.json no encontrado." });
-                
+
                 var json = System.IO.File.ReadAllText(rutaJson);
                 // Devolvemos el JSON crudo, ASP.NET se encarga de serializarlo como objeto
                 return Content(json, "application/json");
@@ -724,7 +775,7 @@ namespace Backend.Controllers
         public async Task<IActionResult> SembrarDatosDePrueba()
         {
             // Verificamos si ya corrimos este script para no duplicar todo
-            if (await _context.Libros.AnyAsync(l => l.Titulo == "Dune")) 
+            if (await _context.Libros.AnyAsync(l => l.Titulo == "Dune"))
                 return BadRequest(new { mensaje = "Los datos de prueba ya fueron cargados previamente." });
 
             // 1. Creamos un diccionario de Tags para reutilizarlos en varios libros a la vez
@@ -834,7 +885,7 @@ namespace Backend.Controllers
                     Titulo = "El Eternauta", AutorPrincipal = "Oesterheld, Héctor Germán",
                     Editorial = "Doedytores", AnioPublicacion = "1957", Clasificacion = "741.5", CodigoCutter = "O298",
                     Tags = new List<Tag> { tags["Ciencia Ficcion"], tags["Argentina"], tags["Juvenil"] },
-                    Ejemplares = new List<Ejemplar> { 
+                    Ejemplares = new List<Ejemplar> {
                         new Ejemplar { NumeroInventario = "INV-1016", DisponibleParaPrestamo = true },
                         new Ejemplar { NumeroInventario = "INV-1017", DisponibleParaPrestamo = true }
                     }
@@ -861,56 +912,63 @@ namespace Backend.Controllers
         }
 
         [HttpGet("publico/buscar")]
-public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "", [FromQuery] int pagina = 1, [FromQuery] int cantidad = 12)
-{
-    try
-    {
-        var consulta = _context.Libros.Include(l => l.Tags).AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(query))
+        public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "", [FromQuery] int pagina = 1, [FromQuery] int cantidad = 12)
         {
-            var q = query.ToLower().Trim();
-            
-            // Definimos nuestras categorías "Madre"
-            string[] categoriasPrincipales = { "ciencia", "ficción", "terror", "historia", "infantil", "aventura", "ciencia ficción" };
+            try
+            {
+                var consulta = _context.Libros.Include(l => l.Tags).AsQueryable();
 
-            if (categoriasPrincipales.Contains(q)) 
-            {
-                // Si buscamos "Ciencia", queremos SOLO "Ciencia". 
-                // Pero si buscamos "Ciencia Ficción", queremos el tag exacto.
-                consulta = consulta.Where(l => l.Tags.Any(t => t.Nombre.ToLower().Trim() == q));
-            } 
-            else 
-            {
-                // Búsqueda libre por texto (Título o Autor)
-                consulta = consulta.Where(l => 
-                    l.Titulo.ToLower().Contains(q) || 
-                    l.AutorPrincipal.ToLower().Contains(q)
-                );
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    var q = query.ToLower().Trim();
+
+                    // Definimos nuestras categorías "Madre"
+                    string[] categoriasPrincipales = { "ciencia", "ficción", "terror", "historia", "infantil", "aventura", "ciencia ficción" };
+
+                    if (categoriasPrincipales.Contains(q))
+                    {
+                        // Si buscamos "Ciencia", queremos SOLO "Ciencia". 
+                        // Pero si buscamos "Ciencia Ficción", queremos el tag exacto.
+                        consulta = consulta.Where(l => l.Tags.Any(t => t.Nombre.ToLower().Trim() == q));
+                    }
+                    else
+                    {
+                        // Búsqueda libre por texto (Título o Autor)
+                        consulta = consulta.Where(l =>
+                            l.Titulo.ToLower().Contains(q) ||
+                            l.AutorPrincipal.ToLower().Contains(q)
+                        );
+                    }
+                }
+
+                var totalLibros = await consulta.CountAsync();
+                var libros = await consulta
+                    .OrderByDescending(l => l.Id)
+                    .Skip((pagina - 1) * cantidad)
+                    .Take(cantidad)
+                    .Select(l => new
+                    {
+                        l.Id,
+                        l.Titulo,
+                        l.AutorPrincipal,
+                        l.PortadaUrl,
+                        l.ReseniaSinopsis,
+                        l.Editorial,
+                        l.AnioPublicacion,
+                        EstaDisponible = l.Ejemplares.Any(e => e.DisponibleParaPrestamo)
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    total = totalLibros,
+                    paginaActual = pagina,
+                    totalPaginas = (int)Math.Ceiling((double)totalLibros / cantidad),
+                    libros = libros
+                });
             }
+            catch (Exception ex) { return StatusCode(500, new { mensaje = ex.Message }); }
         }
-
-        var totalLibros = await consulta.CountAsync();
-        var libros = await consulta
-            .OrderByDescending(l => l.Id)
-            .Skip((pagina - 1) * cantidad)
-            .Take(cantidad)
-            .Select(l => new {
-                l.Id, l.Titulo, l.AutorPrincipal, l.PortadaUrl, l.ReseniaSinopsis,
-                l.Editorial, l.AnioPublicacion,
-                EstaDisponible = l.Ejemplares.Any(e => e.DisponibleParaPrestamo)
-            })
-            .ToListAsync();
-
-        return Ok(new {
-            total = totalLibros,
-            paginaActual = pagina,
-            totalPaginas = (int)Math.Ceiling((double)totalLibros / cantidad),
-            libros = libros
-        });
-    }
-    catch (Exception ex) { return StatusCode(500, new { mensaje = ex.Message }); }
-}
 
         [HttpGet("publico/{id}")]
         public async Task<ActionResult> ObtenerDetalleLibroPublico(int id)
@@ -922,7 +980,8 @@ public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "
 
             if (libro == null) return NotFound(new { mensaje = "Libro no encontrado." });
 
-            return Ok(new {
+            return Ok(new
+            {
                 libro.Id,
                 libro.Titulo,
                 libro.Subtitulo,
@@ -936,7 +995,8 @@ public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "
                 libro.CantidadPaginas,
                 libro.PortadaUrl,
                 Tags = libro.Tags.Select(t => t.Nombre).ToList(),
-                Ejemplares = libro.Ejemplares.Select(e => new {
+                Ejemplares = libro.Ejemplares.Select(e => new
+                {
                     e.Id,
                     e.NumeroInventario,
                     e.Observaciones,
@@ -948,80 +1008,80 @@ public async Task<ActionResult> BuscarLibrosPublico([FromQuery] string query = "
 
 
 
-    }
+        }
 
-    // --- AGREGAR ESTAS DOS CLASES AL FINAL DEL ARCHIVO ---
-    // Son los "moldes" para recibir los datos limpios desde Next.js
-    public class LibroCreacionDTO
-    {
-        public string Titulo { get; set; } = string.Empty;
-        public string? Subtitulo { get; set; }
-        public string AutorPrincipal { get; set; } = string.Empty;
-        public string? Editorial { get; set; }
-        public string? AnioPublicacion { get; set; }
-        public string? Isbn { get; set; }
-        public string? Clasificacion { get; set; }
-        public string? CodigoCutter { get; set; }
-        public string? ReseniaSinopsis { get; set; }
-        public int? CantidadPaginas { get; set; }
-        public string? PortadaUrl { get; set; }
-        public bool UsarPortadaLocal { get; set; }
-        public IFormFile? ArchivoPortada { get; set; }
-        
-        public List<EjemplarDTO> Ejemplares { get; set; } = new();
-        public List<string> Tags { get; set; } = new();
-    }
+        // --- AGREGAR ESTAS DOS CLASES AL FINAL DEL ARCHIVO ---
+        // Son los "moldes" para recibir los datos limpios desde Next.js
+        public class LibroCreacionDTO
+        {
+            public string Titulo { get; set; } = string.Empty;
+            public string? Subtitulo { get; set; }
+            public string AutorPrincipal { get; set; } = string.Empty;
+            public string? Editorial { get; set; }
+            public string? AnioPublicacion { get; set; }
+            public string? Isbn { get; set; }
+            public string? Clasificacion { get; set; }
+            public string? CodigoCutter { get; set; }
+            public string? ReseniaSinopsis { get; set; }
+            public int? CantidadPaginas { get; set; }
+            public string? PortadaUrl { get; set; }
+            public bool UsarPortadaLocal { get; set; }
+            public IFormFile? ArchivoPortada { get; set; }
 
-    public class EjemplarDTO
-    {
-        public string NumeroInventario { get; set; } = string.Empty;
-        public string? Observaciones { get; set; }
-    }
-    public class LibroEdicionDTO
-    {
-        public int Id { get; set; }
-        public string Titulo { get; set; } = string.Empty;
-        public string? Subtitulo { get; set; }
-        public string AutorPrincipal { get; set; } = string.Empty;
-        public string? Editorial { get; set; }
-        public string? AnioPublicacion { get; set; }
-        public string? Isbn { get; set; }
-        public string? Clasificacion { get; set; }
-        public string? CodigoCutter { get; set; }
-        public string? ReseniaSinopsis { get; set; }
-        public int? CantidadPaginas { get; set; }
-        public string? PortadaUrl { get; set; }
-        public bool UsarPortadaLocal { get; set; }
-        public IFormFile? ArchivoPortada { get; set; }
-        
-        public List<EjemplarEdicionDTO> Ejemplares { get; set; } = new();
-        public List<string> Tags { get; set; } = new();
-    }
+            public List<EjemplarDTO> Ejemplares { get; set; } = new();
+            public List<string> Tags { get; set; } = new();
+        }
 
-    public class EjemplarEdicionDTO
-    {
-        public int? Id { get; set; } // Opcional: Si viene nulo es porque es un libro nuevo
-        public string NumeroInventario { get; set; } = string.Empty;
-        public string? Observaciones { get; set; }
-        public bool DisponibleParaPrestamo { get; set; } 
+        public class EjemplarDTO
+        {
+            public string NumeroInventario { get; set; } = string.Empty;
+            public string? Observaciones { get; set; }
+        }
+        public class LibroEdicionDTO
+        {
+            public int Id { get; set; }
+            public string Titulo { get; set; } = string.Empty;
+            public string? Subtitulo { get; set; }
+            public string AutorPrincipal { get; set; } = string.Empty;
+            public string? Editorial { get; set; }
+            public string? AnioPublicacion { get; set; }
+            public string? Isbn { get; set; }
+            public string? Clasificacion { get; set; }
+            public string? CodigoCutter { get; set; }
+            public string? ReseniaSinopsis { get; set; }
+            public int? CantidadPaginas { get; set; }
+            public string? PortadaUrl { get; set; }
+            public bool UsarPortadaLocal { get; set; }
+            public IFormFile? ArchivoPortada { get; set; }
+
+            public List<EjemplarEdicionDTO> Ejemplares { get; set; } = new();
+            public List<string> Tags { get; set; } = new();
+        }
+
+        public class EjemplarEdicionDTO
+        {
+            public int? Id { get; set; } // Opcional: Si viene nulo es porque es un libro nuevo
+            public string NumeroInventario { get; set; } = string.Empty;
+            public string? Observaciones { get; set; }
+            public bool DisponibleParaPrestamo { get; set; }
+        }
+
+        // DTO simple para devolver datos encontrados en internet
+        public class LibroLookupDTO
+        {
+            public string Titulo { get; set; } = "";
+            public string Subtitulo { get; set; } = "";
+            public string AutorPrincipal { get; set; } = "";
+            public string Editorial { get; set; } = "";
+            public string AnioPublicacion { get; set; } = "";
+
+            // --- NUEVOS CAMPOS ---
+            public string ReseniaSinopsis { get; set; } = "";
+            public int? CantidadPaginas { get; set; }
+            public string PortadaUrl { get; set; } = "";
+            public List<string> Categorias { get; set; } = new List<string>();
+        }
+
+
     }
-
-    // DTO simple para devolver datos encontrados en internet
-    public class LibroLookupDTO
-    {
-        public string Titulo { get; set; } = "";
-        public string Subtitulo { get; set; } = "";
-        public string AutorPrincipal { get; set; } = "";
-        public string Editorial { get; set; } = "";
-        public string AnioPublicacion { get; set; } = "";
-
-        // --- NUEVOS CAMPOS ---
-        public string ReseniaSinopsis { get; set; } = "";
-        public int? CantidadPaginas { get; set; }
-        public string PortadaUrl { get; set; } = "";
-        public List<string> Categorias { get; set; } = new List<string>();
-    }
-
-    
-}
 }

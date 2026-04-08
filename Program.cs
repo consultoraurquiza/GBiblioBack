@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Backend.Data; // Para que encuentre tu BibliotecaContext
-
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,6 +34,23 @@ builder.Services.AddSwaggerGen();
 // Registramos el servicio de imágenes
 builder.Services.AddScoped<IImagenService, ImagenService>();
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 app.UseCors("PermitirFrontend");
 app.UseStaticFiles();
@@ -47,6 +66,14 @@ app.UseHttpsRedirection();
 
 // Ejecutamos el Seeder para inyectar la UNESCO si la tabla está vacía
 await DbSeeder.InicializarTesauro(app.Services);
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<BibliotecaContext>();
+    await DbSeeder.Inicializar(context);
+}
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 app.Run();

@@ -46,9 +46,17 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.1.0, )"
+            },
             "HtmlAgilityPack": {
               "target": "Package",
               "version": "[1.12.4, )"
+            },
+            "Microsoft.AspNetCore.Authentication.JwtBearer": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
