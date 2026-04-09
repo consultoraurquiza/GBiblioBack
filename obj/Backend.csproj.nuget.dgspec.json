@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj": {}
+    "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj": {}
   },
   "projects": {
-    "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj": {
+    "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj",
+        "projectUniqueName": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj",
         "projectName": "Backend",
-        "projectPath": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\Backend.csproj",
+        "projectPath": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\Backend.csproj",
         "packagesPath": "C:\\Users\\Ivan\\.nuget\\packages\\",
-        "outputPath": "I:\\Repos VS Code\\GestionBiblioteca\\backend\\obj\\",
+        "outputPath": "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "I:\\Repos VS Code\\GestionBiblioteca\\backend\\NuGet.Config",
+          "I:\\Repos VS Code\\GestionBiblioteca\\Backend\\NuGet.Config",
           "C:\\Users\\Ivan\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
