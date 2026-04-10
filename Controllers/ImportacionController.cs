@@ -85,6 +85,7 @@ namespace Backend.Controllers
                     string titulo = (ObtenerSubcampoMarc(record, "245", "a") ?? "Sin título").TrimEnd('/', ' ', '.', ':');
                     string autor = (ObtenerSubcampoMarc(record, "100", "a") ?? "Anónimo").TrimEnd(',', ' ', '.');
                     string isbn = ObtenerSubcampoMarc(record, "020", "a") ?? string.Empty;
+                    string sinopsis = ObtenerSubcampoMarc(record, "520", "a") ?? string.Empty;
 
                     string editorial = (ObtenerSubcampoMarc(record, "260", "b") ?? ObtenerSubcampoMarc(record, "264", "b") ?? string.Empty).TrimEnd(',', ' ', ';');
                     string anioRaw = ObtenerSubcampoMarc(record, "260", "c") ?? ObtenerSubcampoMarc(record, "264", "c") ?? string.Empty;
@@ -153,7 +154,8 @@ namespace Backend.Controllers
                         Clasificacion = cdu,
                         CodigoCutter = cutter,
                         Ejemplares = listaEjemplares,
-                        Tags = listaTagsDelLibro // 👈 ¡Ahora sí se guardan las materias!
+                        Tags = listaTagsDelLibro, // 👈 ¡Ahora sí se guardan las materias!
+                        ReseniaSinopsis = sinopsis,
                     };
 
                     _context.Libros.Add(nuevoLibro);

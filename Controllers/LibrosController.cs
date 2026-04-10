@@ -484,6 +484,73 @@ namespace Backend.Controllers
 
             try
             {
+
+                if (proveedor.ToLower() == "openlibrary")
+                {
+                    // === MOTOR OPEN LIBRARY (PORTADAS HISTÓRICAS) ===
+                    var url = $"https://openlibrary.org/search.json?title={WebUtility.UrlEncode(titulo)}";
+                    
+                    // Open Library pide un User-Agent para no bloquearnos.
+                    // Usamos HttpRequestMessage para agregarlo solo a esta petición y no afectar a Yenny.
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Add("User-Agent", "BibliotecaEscolarEET464/1.0");
+
+                    var response = await client.SendAsync(request);
+                    if (!response.IsSuccessStatusCode) return StatusCode(500, new { mensaje = "Open Library bloqueó la conexión." });
+
+                    var json = await response.Content.ReadAsStringAsync();
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(json);
+                    var root = jsonDoc.RootElement;
+
+                    if (root.TryGetProperty("numFound", out var numFound) && numFound.GetInt32() > 0)
+                    {
+                        var docs = root.GetProperty("docs");
+                        int contador = 0;
+
+                        foreach (var doc in docs.EnumerateArray())
+                        {
+                            // Solo nos interesan los resultados que tengan foto (cover_i)
+                            if (doc.TryGetProperty("cover_i", out var coverIdElement))
+                            {
+                                int coverId = coverIdElement.GetInt32();
+                                
+                                // 1. EXTRAER TÍTULO
+                                string tituloLimpio = doc.TryGetProperty("title", out var titleEl) ? titleEl.GetString() ?? "Sin título" : "Sin título";
+                                
+                                // 2. EXTRAER AUTOR (Viene como una lista de autores)
+                                string autorOriginal = "Autor Desconocido";
+                                if (doc.TryGetProperty("author_name", out var authors) && authors.GetArrayLength() > 0)
+                                {
+                                    autorOriginal = authors[0].GetString() ?? "Autor Desconocido";
+                                }
+
+                                // 3. ARMAR URL DE IMAGEN (Tamaño M para que se vea bien en la lista)
+                                string portadaUrl = $"https://covers.openlibrary.org/b/id/{coverId}-M.jpg";
+                                string linkExterno = "";
+                                if (doc.TryGetProperty("key", out var keyElement))
+                                {
+                                    linkExterno = $"https://openlibrary.org{keyElement.GetString()}";
+                                }
+
+                                listaResultados.Add(new
+                                {
+                                    titulo = tituloLimpio,
+                                    autor = autorOriginal,
+                                    portadaUrl = portadaUrl,
+                                    resumen = "Portada histórica rescatada del Archivo Abierto.",
+                                    fuente = "Open Library",
+                                    linkComercial = "", // ¡CLAVE! Lo dejamos vacío para que tu frontend no intente hacer un segundo scrape
+                                    linkExterno = linkExterno
+                                });
+
+                                contador++;
+                                if (contador >= 5) break; // Limitamos a 5 como en tu código de Yenny
+                            }
+                        }
+                    }
+                }
+
+
                 if (proveedor.ToLower() == "yenny")
                 {
                     // === MOTOR YENNY (TODOTERRENO) ===
