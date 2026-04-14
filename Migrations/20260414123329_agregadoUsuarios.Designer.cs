@@ -3,6 +3,7 @@ using System;
 using Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Backend.Migrations
 {
     [DbContext(typeof(BibliotecaContext))]
-    partial class BibliotecaContextModelSnapshot : ModelSnapshot
+    [Migration("20260414123329_agregadoUsuarios")]
+    partial class agregadoUsuarios
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -69,27 +72,6 @@ namespace Backend.Migrations
                     b.HasIndex("LibroId");
 
                     b.ToTable("Ejemplares");
-                });
-
-            modelBuilder.Entity("Backend.Models.Grupo", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Nombre")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Turno")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Grupos");
                 });
 
             modelBuilder.Entity("Backend.Models.Libro", b =>
@@ -315,16 +297,21 @@ namespace Backend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Anio")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Apellido")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Division")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Dni")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<int?>("GrupoId")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -340,8 +327,6 @@ namespace Backend.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("GrupoId");
 
                     b.ToTable("Usuarios");
                 });
@@ -434,15 +419,6 @@ namespace Backend.Migrations
                     b.Navigation("Material");
                 });
 
-            modelBuilder.Entity("Backend.Models.Usuario", b =>
-                {
-                    b.HasOne("Backend.Models.Grupo", "Grupo")
-                        .WithMany("Alumnos")
-                        .HasForeignKey("GrupoId");
-
-                    b.Navigation("Grupo");
-                });
-
             modelBuilder.Entity("LibroTag", b =>
                 {
                     b.HasOne("Backend.Models.Libro", null)
@@ -456,11 +432,6 @@ namespace Backend.Migrations
                         .HasForeignKey("TagsId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Backend.Models.Grupo", b =>
-                {
-                    b.Navigation("Alumnos");
                 });
 
             modelBuilder.Entity("Backend.Models.Libro", b =>

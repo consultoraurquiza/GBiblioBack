@@ -14,7 +14,7 @@ namespace Backend.Controllers
     {
         private readonly BibliotecaContext _context;
         // 👇 ESTA ES LA CLAVE PARA FILTRAR TUS LIBROS:
-        private const string CODIGO_ESCUELA = "EET464";
+        //private const string CODIGO_ESCUELA = "EET464";
 
         public ImportacionController(BibliotecaContext context)
         {
@@ -30,6 +30,8 @@ namespace Backend.Controllers
 
             try
             {
+                var configSistema = await _context.Configuracion.FirstOrDefaultAsync();
+                string? escuelaFiltro = configSistema?.NombreEscuela?.Trim();
                 using var stream = archivoXml.OpenReadStream();
                 var xml = XDocument.Load(stream);
                 var records = xml.Descendants().Where(e => e.Name.LocalName == "record");
@@ -63,9 +65,13 @@ namespace Backend.Controllers
 
                     foreach (var item in ejemplaresKoha)
                     {
-                        var sucursal = ObtenerSubcampo(item, "a") ?? ObtenerSubcampo(item, "b");
+                        var sucursalEnKoha = ObtenerSubcampo(item, "a") ?? ObtenerSubcampo(item, "b");
 
-                        if (sucursal != null && sucursal.Contains(CODIGO_ESCUELA))
+                        // 👇 2. NUEVA LÓGICA DE FILTRADO 👇
+                        bool debeIncluirse = string.IsNullOrWhiteSpace(escuelaFiltro) || 
+                                            (sucursalEnKoha != null && sucursalEnKoha.Contains(escuelaFiltro, StringComparison.OrdinalIgnoreCase));
+
+                        if (debeIncluirse)
                         {
                             var codigoBarras = ObtenerSubcampo(item, "p"); 
                             signaturaTopografica ??= ObtenerSubcampo(item, "o"); 

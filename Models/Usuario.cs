@@ -11,8 +11,11 @@ public class Usuario
     public RolUsuario Rol { get; set; } // Enum: Alumno, Profesor, Administrador
     
     // Datos específicos de la escuela (Pueden ser nulos si es Profesor)
-    public string Anio { get; set; } // Ej: "3ro"
-    public string Division { get; set; } // Ej: "B"
+    // public string Anio { get; set; } // Ej: "3ro"
+    // public string Division { get; set; } // Ej: "B"
+
+    public int? GrupoId { get; set; }
+    public Grupo? Grupo { get; set; }
     
     // Control de estado
     public bool PuedePedirPrestado { get; set; } = true; // Se pone en false si debe libros o tiene sanción

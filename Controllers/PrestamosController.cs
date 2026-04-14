@@ -16,16 +16,6 @@ namespace Backend.Controllers
             _context = context;
         }
 
-        // [HttpGet("activos")]
-        // public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosActivos()
-        // {
-        //     return await _context.Prestamos
-        //         .Include(p => p.Ejemplar)
-        //             .ThenInclude(e => e.Libro) 
-        //         // ELIMINAMOS EL INCLUDE DEL USUARIO
-        //         .Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido)
-        //         .ToListAsync();
-        // }
         // GET: api/prestamos?filtro=activos
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Prestamo>>> GetPrestamosFiltrados([FromQuery] string filtro = "activos")
@@ -33,28 +23,25 @@ namespace Backend.Controllers
             var query = _context.Prestamos
                 .Include(p => p.Ejemplar)
                     .ThenInclude(e => e.Libro)
+                .Include(p => p.Usuario) // 👈 VOLVEMOS A INCLUIR AL USUARIO
                 .AsQueryable();
 
             switch (filtro.ToLower())
             {
                 case "vencidos":
-                    // Trae los vencidos explícitos o los activos cuya fecha ya se pasó
                     query = query.Where(p => 
                         p.Estado == EstadoPrestamo.Vencido || 
                         (p.Estado == EstadoPrestamo.Activo && p.FechaVencimiento < DateTime.UtcNow));
                     break;
                 case "finalizados":
-                    // Trae solo los devueltos
                     query = query.Where(p => p.Estado == EstadoPrestamo.Devuelto);
                     break;
                 case "activos":
                 default:
-                    // Trae los prestados que siguen en la calle (al día o vencidos)
                     query = query.Where(p => p.Estado == EstadoPrestamo.Activo || p.Estado == EstadoPrestamo.Vencido);
                     break;
             }
 
-            // Ordenamos para que los más recientes salgan primero en la tabla
             var prestamos = await query.OrderByDescending(p => p.FechaSalida).ToListAsync();
             
             return Ok(prestamos);
@@ -64,9 +51,9 @@ namespace Backend.Controllers
         public async Task<ActionResult<Prestamo>> GetPrestamoPorId(int id)
         {
             var prestamo = await _context.Prestamos
-                // ELIMINAMOS EL INCLUDE DEL USUARIO
                 .Include(p => p.Ejemplar)
                     .ThenInclude(e => e.Libro) 
+                .Include(p => p.Usuario) // 👈 VOLVEMOS A INCLUIR AL USUARIO
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (prestamo == null) 
@@ -75,12 +62,12 @@ namespace Backend.Controllers
             return Ok(prestamo);
         }
 
-        // FUSIONAMOS EL VIEJO METODO CON NUESTRO NUEVO DTO MANUAL
         [HttpPost("prestar")]
-        public async Task<ActionResult> PrestarLibro([FromBody] NuevoPrestamoManualDTO dto)
+        public async Task<ActionResult> PrestarLibro([FromBody] NuevoPrestamoDTO dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.NombreLector))
-                return BadRequest(new { mensaje = "El nombre de quien retira es obligatorio." });
+            // 1. VALIDACIÓN HÍBRIDA: Tiene que haber un ID de usuario O un nombre escrito a mano
+            if (!dto.UsuarioId.HasValue && string.IsNullOrWhiteSpace(dto.NombreManual))
+                return BadRequest(new { mensaje = "Debe seleccionar un usuario registrado o ingresar un nombre manualmente." });
 
             var ejemplar = await _context.Ejemplares.FindAsync(dto.EjemplarId);
 
@@ -90,17 +77,22 @@ namespace Backend.Controllers
             if (!ejemplar.DisponibleParaPrestamo) 
                 return BadRequest(new { mensaje = "Este ejemplar en particular ya está prestado o en reparación." });
 
+            // 2. DÍAS DINÁMICOS: Traemos la configuración de la base de datos
+            var configSistema = await _context.Configuracion.FirstOrDefaultAsync();
+            int diasDePrestamo = configSistema?.DiasPrestamo ?? 7; // Si falla algo, 7 días por defecto
+
             var nuevoPrestamo = new Prestamo
             {
                 EjemplarId = dto.EjemplarId,
-                NombreLector = dto.NombreLector,   // <- CAMPO MANUAL
-                CursoOAula = dto.CursoOAula,       // <- CAMPO MANUAL
+                UsuarioId = dto.UsuarioId,           // <- ID si es registrado
+                NombreLector = dto.NombreManual,     // <- Texto si es rápido
+                CursoOAula = dto.CursoManual,       // <- Texto si es rápido
+                TelefonoManual = dto.TelefonoManual, // <- Texto si es rápido
                 FechaSalida = DateTime.UtcNow,
-                FechaVencimiento = DateTime.UtcNow.AddDays(7), 
+                FechaVencimiento = DateTime.UtcNow.AddDays(diasDePrestamo), // <- Calculado dinámicamente
                 Estado = EstadoPrestamo.Activo
             };
 
-            // Marcamos el ejemplar físico como no disponible
             ejemplar.DisponibleParaPrestamo = false;
 
             _context.Prestamos.Add(nuevoPrestamo);
@@ -125,7 +117,6 @@ namespace Backend.Controllers
             prestamo.FechaDevolucionReal = DateTime.UtcNow;
             prestamo.Estado = EstadoPrestamo.Devuelto;
             
-            // Volvemos a habilitar el ejemplar físico
             prestamo.Ejemplar.DisponibleParaPrestamo = true;
 
             await _context.SaveChangesAsync();
@@ -134,11 +125,13 @@ namespace Backend.Controllers
         }
     }
 
-    // DTO REVISADO: Usamos EjemplarId para saber exactamente qué copia se llevan
-    public class NuevoPrestamoManualDTO
+    // DTO ACTUALIZADO PARA SOPORTAR EL MODO HÍBRIDO
+    public class NuevoPrestamoDTO
     {
         public int EjemplarId { get; set; } 
-        public string NombreLector { get; set; } = string.Empty;
-        public string CursoOAula { get; set; } = string.Empty;
+        public int? UsuarioId { get; set; } 
+        public string? NombreManual { get; set; }
+        public string? CursoManual { get; set; }
+        public string? TelefonoManual { get; set; }
     }
 }

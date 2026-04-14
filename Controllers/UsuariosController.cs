@@ -16,71 +16,130 @@ namespace Backend.Controllers
             _context = context;
         }
 
-        // GET: api/usuarios (Trae toda la lista)
+        // 1. GET: Para la tabla principal
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios()
+        public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios([FromQuery] string? busqueda, [FromQuery] string grupoFiltro = "todos")
         {
-            return await _context.Usuarios.ToListAsync();
-        }
+            var query = _context.Usuarios.Include(u => u.Grupo).AsQueryable();
 
-        // GET: api/usuarios/buscar/12345678
-        // ¡Este es el buscador estrella para el bibliotecario!
-        [HttpGet("buscar/{dni}")]
-        public async Task<ActionResult<Usuario>> BuscarPorDni(string dni)
-        {
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Dni == dni);
-
-            if (usuario == null)
+            if (!string.IsNullOrWhiteSpace(busqueda))
             {
-                // Si devuelve 404, en el frontend mostramos la ventanita de "Nuevo Usuario"
-                return NotFound(new { mensaje = "El usuario no existe. Debe registrarse." });
+                var b = busqueda.ToLower();
+                query = query.Where(u =>
+                    u.Dni.ToLower().Contains(b) ||
+                    u.Nombre.ToLower().Contains(b) ||
+                    u.Apellido.ToLower().Contains(b));
             }
 
-            return Ok(usuario);
+            if (grupoFiltro != "todos")
+            {
+                if (grupoFiltro == "alumnos") query = query.Where(u => u.Rol == RolUsuario.Alumno);
+                else if (grupoFiltro == "docentes") query = query.Where(u => u.Rol == RolUsuario.Profesor);
+                else if (grupoFiltro == "admin") query = query.Where(u => u.Rol == RolUsuario.Administrador);
+            }
+
+            var usuarios = await query.OrderBy(u => u.Apellido).ThenBy(u => u.Nombre).ToListAsync();
+            return Ok(usuarios);
         }
 
-        // POST: api/usuarios (Registra al alumno en el momento)
-        [HttpPost]
-        public async Task<ActionResult<Usuario>> PostUsuario(Usuario usuario)
+        // 2. GET: Buscador rápido para el Autocompletado del Mostrador
+        [HttpGet("buscar")]
+        public async Task<ActionResult> BuscarUsuariosParaPrestamo([FromQuery] string q)
         {
+            if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+                return Ok(new List<object>());
+
+            var busqueda = q.ToLower();
+
+            var usuarios = await _context.Usuarios
+                .Include(u => u.Grupo) // 👈 Agregamos el Include para poder leer el nombre del grupo
+                .Where(u => u.Dni.Contains(busqueda) || u.Nombre.ToLower().Contains(busqueda) || u.Apellido.ToLower().Contains(busqueda))
+                .Select(u => new
+                {
+                    id = u.Id,
+                    nombre = u.Nombre,
+                    apellido = u.Apellido,
+                    dni = u.Dni,
+                    // 👈 Usamos el Grupo en lugar de Anio/Division
+                    curso = u.Rol == RolUsuario.Alumno ? (u.Grupo != null ? u.Grupo.Nombre : "Sin asignar") : "Docente/Admin"
+                })
+                .Take(10)
+                .ToListAsync();
+
+            return Ok(usuarios);
+        }
+
+        // GET: Traer alumnos específicos de un grupo para el migrador
+        // GET: Traer alumnos específicos de un grupo para el migrador
+        [HttpGet("por-grupo/{grupoId}")]
+        public async Task<ActionResult> GetUsuariosPorGrupo(int grupoId)
+        {
+            var usuarios = await _context.Usuarios
+                .Where(u => u.GrupoId == grupoId && u.Rol == RolUsuario.Alumno)
+                .OrderBy(u => u.Apellido).ThenBy(u => u.Nombre)
+                // 👇 MAGIA ACÁ: Usamos Select para aplanar el JSON y evitar bucles
+                .Select(u => new 
+                {
+                    id = u.Id,
+                    nombre = u.Nombre,
+                    apellido = u.Apellido,
+                    dni = u.Dni
+                })
+                .ToListAsync();
+
+            return Ok(usuarios);
+        }
+
+        // 3. POST: Crear nuevo usuario
+        [HttpPost]
+        public async Task<ActionResult<Usuario>> CrearUsuario(Usuario usuario)
+        {
+            if (await _context.Usuarios.AnyAsync(u => u.Dni == usuario.Dni))
+                return BadRequest(new { mensaje = "Ya existe un usuario registrado con ese DNI." });
+
+            // Si es profe o admin, forzamos a nulo el grupo
+            if (usuario.Rol != RolUsuario.Alumno)
+            {
+                usuario.GrupoId = null; 
+            }
+
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetUsuarios), new { id = usuario.Id }, usuario);
+            return Ok(usuario);
         }
-        // PUT: api/usuarios/5 (Edita un usuario existente)
-        [HttpPut("{id}")]
-        public async Task<IActionResult> EditarUsuario(int id, Usuario usuarioActualizado)
-        {
-            if (id != usuarioActualizado.Id) 
-                return BadRequest(new { mensaje = "El ID no coincide." });
 
-            var usuario = await _context.Usuarios.FindAsync(id);
-            if (usuario == null) 
+        // 4. PUT: Editar usuario existente
+        [HttpPut("{id}")]
+        public async Task<IActionResult> ActualizarUsuario(int id, Usuario usuarioActualizado)
+        {
+            if (id != usuarioActualizado.Id)
+                return BadRequest(new { mensaje = "El ID del usuario no coincide." });
+
+            var usuarioBd = await _context.Usuarios.FindAsync(id);
+            if (usuarioBd == null)
                 return NotFound(new { mensaje = "Usuario no encontrado." });
 
-            // Actualizamos solo los campos permitidos
-            usuario.Dni = usuarioActualizado.Dni;
-            usuario.Nombre = usuarioActualizado.Nombre;
-            usuario.Apellido = usuarioActualizado.Apellido;
-            usuario.Telefono = usuarioActualizado.Telefono;
-            usuario.Rol = usuarioActualizado.Rol;
-            usuario.Anio = usuarioActualizado.Anio;
-            usuario.Division = usuarioActualizado.Division;
-            usuario.PuedePedirPrestado = usuarioActualizado.PuedePedirPrestado;
+            if (usuarioBd.Dni != usuarioActualizado.Dni && await _context.Usuarios.AnyAsync(u => u.Dni == usuarioActualizado.Dni))
+                return BadRequest(new { mensaje = "El DNI ingresado ya pertenece a otro usuario." });
+
+            usuarioBd.Dni = usuarioActualizado.Dni;
+            usuarioBd.Nombre = usuarioActualizado.Nombre;
+            usuarioBd.Apellido = usuarioActualizado.Apellido;
+            usuarioBd.Telefono = usuarioActualizado.Telefono;
+            usuarioBd.Rol = usuarioActualizado.Rol;
+            usuarioBd.PuedePedirPrestado = usuarioActualizado.PuedePedirPrestado;
+            usuarioBd.GrupoId = usuarioActualizado.GrupoId;
+
+            // 👈 LÓGICA CORREGIDA: Si NO es alumno, le borramos el grupo.
+            if (usuarioActualizado.Rol != RolUsuario.Alumno)
+            {
+                usuarioBd.GrupoId = null;
+            }
 
             await _context.SaveChangesAsync();
-            
-            return Ok(usuario);
-        }
 
-        // También necesitamos un GET por ID normal para que el formulario de Next.js pueda cargar los datos
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Usuario>> GetUsuarioPorId(int id)
-        {
-            var usuario = await _context.Usuarios.FindAsync(id);
-            if (usuario == null) return NotFound();
-            return Ok(usuario);
+            return Ok(usuarioBd);
         }
     }
 }
