@@ -36,6 +36,7 @@ namespace Backend.Controllers
                     g.Id,
                     g.Nombre,
                     g.Turno,
+                    g.HabilitadoParaPrestamos, // Incluimos el nuevo campo en la respuesta
                     CantidadAlumnos = g.Alumnos.Count
                 })
                 .ToListAsync();
@@ -46,7 +47,7 @@ namespace Backend.Controllers
         [HttpPost]
         public async Task<ActionResult<Grupo>> CrearGrupo(Grupo grupo)
         {
-            if (await _context.Grupos.AnyAsync(g => g.Nombre.ToLower() == grupo.Nombre.ToLower() && g.Turno == grupo.Turno))
+            if (await _context.Grupos.AnyAsync(g => g.Nombre.ToLower() == grupo.Nombre.ToLower() && g.Turno == grupo.Turno && g.HabilitadoParaPrestamos == grupo.HabilitadoParaPrestamos))
                 return BadRequest(new { mensaje = "Ya existe un grupo con ese nombre en ese turno." });
 
             _context.Grupos.Add(grupo);
@@ -93,6 +94,7 @@ namespace Backend.Controllers
 
             grupoBd.Nombre = grupoActualizado.Nombre;
             grupoBd.Turno = grupoActualizado.Turno;
+            grupoBd.HabilitadoParaPrestamos = grupoActualizado.HabilitadoParaPrestamos; // Actualizamos el nuevo campo
 
             await _context.SaveChangesAsync();
             return Ok(grupoBd);

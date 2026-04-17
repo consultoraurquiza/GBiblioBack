@@ -8,6 +8,9 @@ namespace Backend.Models
         public string Nombre { get; set; } // Ej: "1ero A"
         public string Turno { get; set; } = "Mañana"; // Ej: Mañana, Tarde, Vespertino
 
+        // 👇 NUEVO CAMPO: Define si el grupo entero puede sacar libros
+        public bool HabilitadoParaPrestamos { get; set; } = true;
+
         // Relación: Un grupo tiene muchos alumnos
         [JsonIgnore]
         public ICollection<Usuario> Alumnos { get; set; } = new List<Usuario>();
